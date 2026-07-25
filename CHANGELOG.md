@@ -13,7 +13,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 - Made persistent global OpenCode configuration the recommended setup flow.
 - Moved temporary environment-variable setup to an optional alternative.
-- Clarified API-key file permissions and troubleshooting.
+- Clarified API-key handling and troubleshooting.
 
 ## [0.1.0] - 2026-07-25
 

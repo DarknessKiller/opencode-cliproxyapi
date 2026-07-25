@@ -50,14 +50,8 @@ Configure the plugin entry with your persistent server URL and API key:
 The URL may include `/v1`, but it is not required. If `baseURL` is omitted, the
 plugin uses `http://localhost:8317/v1`.
 
-This is a global user config, not a project config. Do not commit it. On macOS
-or Linux, restrict access because it contains your key:
-
-```bash
-chmod 600 ~/.config/opencode/opencode.json
-```
-
-Use the actual filename if yours is `opencode.jsonc`.
+Keep this global config private because it contains your API key. Do not copy
+the connection into a project's `opencode.json` or commit it to a repository.
 
 ### 3. Verify
 
