@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-25
+
+### Changed
+
+- Made persistent global OpenCode configuration the recommended setup flow.
+- Moved temporary environment-variable setup to an optional alternative.
+- Clarified API-key file permissions and troubleshooting.
+
 ## [0.1.0] - 2026-07-25
 
 ### Added
@@ -18,6 +26,6 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Automatic model names and capability hints in OpenCode's model picker.
 - Local plugin and npm package installation flows.
 
-[Unreleased]: https://github.com/yourcasualdev/opencode-cliproxyapi/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yourcasualdev/opencode-cliproxyapi/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/yourcasualdev/opencode-cliproxyapi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yourcasualdev/opencode-cliproxyapi/releases/tag/v0.1.0
-

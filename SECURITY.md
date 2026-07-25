@@ -13,6 +13,9 @@ impact. You should receive an acknowledgement within seven days.
 
 ## Credential handling
 
-The plugin supports `CLIPROXY_API_KEY` so credentials do not need to be stored
-in project configuration. Never commit CLIProxyAPI keys to a repository.
+Store persistent connection details only in OpenCode's global user config, not
+in a project's `opencode.json`. Restrict that global config to the current user
+when it contains an API key.
 
+The plugin also supports `CLIPROXY_API_KEY` for environments where secrets are
+injected at runtime. Never commit CLIProxyAPI keys to a repository.

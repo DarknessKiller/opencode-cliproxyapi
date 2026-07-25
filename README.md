@@ -21,27 +21,43 @@ You need OpenCode, a running CLIProxyAPI server, and one of its API keys.
 opencode plugin opencode-cliproxyapi --global
 ```
 
-### 2. Set your connection
+### 2. Save your connection
 
-macOS or Linux:
+Open your global OpenCode config:
 
-```bash
-export CLIPROXY_BASE_URL="http://your-server:8317"
-export CLIPROXY_API_KEY="your-cli-proxy-api-key"
+```text
+~/.config/opencode/opencode.json
 ```
 
-Windows PowerShell:
+The installer may have created `opencode.jsonc` instead. Either filename works.
+Configure the plugin entry with your persistent server URL and API key:
 
-```powershell
-$env:CLIPROXY_BASE_URL = "http://your-server:8317"
-$env:CLIPROXY_API_KEY = "your-cli-proxy-api-key"
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    [
+      "opencode-cliproxyapi",
+      {
+        "baseURL": "http://your-server:8317",
+        "apiKey": "your-cli-proxy-api-key"
+      }
+    ]
+  ]
+}
 ```
 
-The URL may include `/v1`, but it is not required. If the URL is omitted, the
+The URL may include `/v1`, but it is not required. If `baseURL` is omitted, the
 plugin uses `http://localhost:8317/v1`.
 
-These variables must be available to the process that starts OpenCode. Add them
-to your shell profile if you want them set in every new terminal.
+This is a global user config, not a project config. Do not commit it. On macOS
+or Linux, restrict access because it contains your key:
+
+```bash
+chmod 600 ~/.config/opencode/opencode.json
+```
+
+Use the actual filename if yours is `opencode.jsonc`.
 
 ### 3. Verify
 
@@ -68,19 +84,13 @@ opencode
 Choose **CLIProxyAPI**, select a model, and use OpenCode normally. Restart
 OpenCode whenever the model catalog on CLIProxyAPI changes.
 
-> This release uses environment variables instead of OpenCode's `/connect`
-> screen. Model selection itself uses the standard `/models` experience.
+> This release stores the connection in OpenCode's global config instead of
+> using the `/connect` screen. Model selection itself uses the standard
+> `/models` experience.
 
 ## Configuration
 
-The environment variables are the simplest and safest configuration:
-
-| Variable | Required | Default |
-| --- | --- | --- |
-| `CLIPROXY_API_KEY` | Yes, when the server requires authentication | None |
-| `CLIPROXY_BASE_URL` | No | `http://localhost:8317/v1` |
-
-Plugin options can be set in `opencode.json` when more control is needed:
+The recommended configuration is the global plugin entry shown above:
 
 ```json
 {
@@ -90,6 +100,7 @@ Plugin options can be set in `opencode.json` when more control is needed:
       "opencode-cliproxyapi",
       {
         "baseURL": "http://your-server:8317",
+        "apiKey": "your-cli-proxy-api-key",
         "providerName": "My CLIProxyAPI"
       }
     ]
@@ -97,17 +108,27 @@ Plugin options can be set in `opencode.json` when more control is needed:
 }
 ```
 
-Keep the API key in `CLIPROXY_API_KEY`; do not commit it to
-`opencode.json`.
-
 | Plugin option | Default | Purpose |
 | --- | --- | --- |
 | `baseURL` | `CLIPROXY_BASE_URL` or `http://localhost:8317/v1` | CLIProxyAPI URL |
-| `apiKey` | `CLIPROXY_API_KEY` | API key; prefer the environment variable |
+| `apiKey` | `CLIPROXY_API_KEY` | CLIProxyAPI key |
 | `providerID` | `cliproxyapi` | ID used in `provider/model` names |
 | `providerName` | `CLIProxyAPI` | Name displayed in the model picker |
 | `protocol` | `chat` | `chat` uses `/chat/completions`; `responses` uses `/responses` |
 | `discoveryTimeoutMs` | `10000` | Startup model-discovery timeout |
+
+### Optional environment variables
+
+Environment variables remain available for containers, CI, or users who prefer
+not to place a key in the config:
+
+```bash
+export CLIPROXY_BASE_URL="http://your-server:8317"
+export CLIPROXY_API_KEY="your-cli-proxy-api-key"
+```
+
+Put these lines in your shell profile if you want them to persist. Explicit
+plugin options in `opencode.json` take precedence over environment variables.
 
 Existing `provider.cliproxyapi` settings are preserved, so individual models
 can be customized:
@@ -134,26 +155,17 @@ can be customized:
 
 ### `Missing API key`
 
-Set `CLIPROXY_API_KEY` in the same terminal that starts OpenCode:
-
-```bash
-export CLIPROXY_API_KEY="your-cli-proxy-api-key"
-```
+Check that the global plugin entry contains a non-empty `apiKey`, then restart
+OpenCode. If you chose environment variables instead, ensure
+`CLIPROXY_API_KEY` is available to the process that starts OpenCode.
 
 ### No CLIProxyAPI models appear
 
-First check the API directly. If your base URL does not include `/v1`:
+First check the API directly:
 
 ```bash
-curl -H "Authorization: Bearer $CLIPROXY_API_KEY" \
-  "${CLIPROXY_BASE_URL%/}/v1/models"
-```
-
-If it already ends in `/v1`:
-
-```bash
-curl -H "Authorization: Bearer $CLIPROXY_API_KEY" \
-  "${CLIPROXY_BASE_URL%/}/models"
+curl -H "Authorization: Bearer your-cli-proxy-api-key" \
+  "http://your-server:8317/v1/models"
 ```
 
 Then restart OpenCode and run:
@@ -162,11 +174,10 @@ Then restart OpenCode and run:
 opencode models cliproxyapi
 ```
 
-### It works in one terminal but not another
+### Environment configuration works in one terminal but not another
 
-The second terminal or desktop launcher may not have the environment
-variables. Start OpenCode from the terminal where they are set, or configure
-the launcher to provide them.
+Move the connection to the recommended global OpenCode config, or add the
+environment variables to your shell profile.
 
 ## Development
 
