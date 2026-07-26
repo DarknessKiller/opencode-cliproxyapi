@@ -3,6 +3,14 @@ export type CatalogModel = {
   ownedBy?: string
 }
 
+export type ModelProtocolCatalog = Record<
+  string,
+  {
+    npm?: string
+    models: Record<string, string>
+  }
+>
+
 type CatalogResponse = {
   data?: unknown
 }
@@ -58,6 +66,49 @@ export async function discoverModels(input: {
   }
 
   return parseCatalog(await response.json())
+}
+
+export function parseModelProtocolCatalog(input: unknown): ModelProtocolCatalog {
+  if (!isRecord(input)) throw new Error("Model metadata service returned a non-object catalog")
+
+  return Object.fromEntries(
+    Object.entries(input).flatMap(([providerID, provider]) => {
+      if (!isRecord(provider)) return []
+
+      const models = Object.fromEntries(
+        Object.entries(isRecord(provider.models) ? provider.models : {}).flatMap(([modelID, model]) => {
+          if (!isRecord(model) || !isRecord(model.provider) || typeof model.provider.npm !== "string") {
+            return []
+          }
+          return [[modelID, model.provider.npm]]
+        }),
+      )
+
+      const npm = typeof provider.npm === "string" ? provider.npm : undefined
+      return npm || Object.keys(models).length > 0
+        ? [[providerID, { ...(npm ? { npm } : {}), models }]]
+        : []
+    }),
+  )
+}
+
+export async function discoverModelProtocols(input: {
+  url: string
+  timeoutMs: number
+  fetcher?: typeof fetch
+}) {
+  const response = await (input.fetcher ?? fetch)(input.url, {
+    signal: AbortSignal.timeout(input.timeoutMs),
+  })
+
+  if (!response.ok) {
+    const detail = (await response.text()).trim().slice(0, 300)
+    throw new Error(
+      `Model protocol discovery failed with HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
+    )
+  }
+
+  return parseModelProtocolCatalog(await response.json())
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
