@@ -1,10 +1,17 @@
 import type { Config, Plugin, PluginModule, PluginOptions } from "@opencode-ai/plugin"
-import { discoverModels, normalizeBaseURL, type CatalogModel } from "./catalog.js"
+import {
+  discoverModelProtocols,
+  discoverModels,
+  normalizeBaseURL,
+  type CatalogModel,
+  type ModelProtocolCatalog,
+} from "./catalog.js"
 
 const DEFAULT_BASE_URL = "http://localhost:8317/v1"
 const DEFAULT_PROVIDER_ID = "cliproxyapi"
 const DEFAULT_PROVIDER_NAME = "CLIProxyAPI"
 const DEFAULT_DISCOVERY_TIMEOUT_MS = 10_000
+const DEFAULT_MODEL_METADATA_URL = "https://models.dev/api.json"
 
 type ConnectorOptions = {
   baseURL?: string
@@ -12,6 +19,7 @@ type ConnectorOptions = {
   providerID?: string
   providerName?: string
   protocol?: "chat" | "responses"
+  modelMetadataURL?: string | false
   discoveryTimeoutMs?: number
 }
 
@@ -35,11 +43,28 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
         options.apiKey ?? process.env.CLIPROXY_API_KEY ?? stringOption(existing?.options?.apiKey)
 
       try {
-        const catalog = await discoverModels({
-          baseURL,
-          apiKey,
-          timeoutMs: options.discoveryTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS,
-        })
+        const timeoutMs = options.discoveryTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS
+        const [catalog, protocolDiscovery] = await Promise.all([
+          discoverModels({
+            baseURL,
+            apiKey,
+            timeoutMs,
+          }),
+          discoverProtocols({
+            url: options.modelMetadataURL ?? DEFAULT_MODEL_METADATA_URL,
+            timeoutMs,
+          }),
+        ])
+
+        if (protocolDiscovery.error) {
+          await client.app.log({
+            body: {
+              service: "opencode-cliproxyapi",
+              level: "warn",
+              message: protocolDiscovery.error,
+            },
+          })
+        }
 
         addProvider(config, {
           providerID,
@@ -48,6 +73,7 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
           apiKey,
           protocol: options.protocol ?? "chat",
           catalog,
+          protocolCatalog: protocolDiscovery.catalog,
         })
 
         await client.app.log({
@@ -75,8 +101,14 @@ export default {
   id: "opencode-cliproxyapi",
   server: CLIProxyAPIPlugin,
 } satisfies PluginModule
-export { discoverModels, normalizeBaseURL, parseCatalog } from "./catalog.js"
-export type { CatalogModel } from "./catalog.js"
+export {
+  discoverModelProtocols,
+  discoverModels,
+  normalizeBaseURL,
+  parseCatalog,
+  parseModelProtocolCatalog,
+} from "./catalog.js"
+export type { CatalogModel, ModelProtocolCatalog } from "./catalog.js"
 
 function addProvider(
   config: Config,
@@ -87,6 +119,7 @@ function addProvider(
     apiKey?: string
     protocol: "chat" | "responses"
     catalog: CatalogModel[]
+    protocolCatalog: ModelProtocolCatalog
   },
 ) {
   const existing = config.provider?.[input.providerID]
@@ -98,6 +131,15 @@ function addProvider(
         tool_call: !isImageModel(model.id),
         reasoning: isReasoningModel(model.id),
         attachment: supportsAttachments(model.id),
+        ...(model.ownedBy &&
+        resolveModelNpm(input.protocolCatalog, model.ownedBy, model.id) ===
+          "@ai-sdk/anthropic"
+          ? {
+              provider: {
+                npm: "@ai-sdk/anthropic",
+              },
+            }
+          : {}),
         ...(isImageModel(model.id)
           ? {
               modalities: {
@@ -124,12 +166,37 @@ function addProvider(
         baseURL: input.baseURL,
         ...(input.apiKey ? { apiKey: input.apiKey } : {}),
       },
-      models: {
-        ...discovered,
-        ...existing?.models,
-      },
+      models: mergeModels(discovered, existing?.models),
     },
   }
+}
+
+function resolveModelNpm(
+  catalog: ModelProtocolCatalog,
+  providerID: string,
+  modelID: string,
+): string | undefined {
+  const provider = catalog[providerID]
+  return provider?.models[modelID] ?? provider?.npm
+}
+
+function mergeModels(
+  discovered: Record<string, ModelConfig>,
+  existing: ProviderConfig["models"],
+): Record<string, ModelConfig> {
+  const merged = { ...discovered }
+
+  for (const [modelID, model] of Object.entries(existing ?? {})) {
+    const discoveredModel = merged[modelID]
+    const providerNpm = model.provider?.npm ?? discoveredModel?.provider?.npm
+    merged[modelID] = {
+      ...discoveredModel,
+      ...model,
+      ...(providerNpm ? { provider: { npm: providerNpm } } : {}),
+    }
+  }
+
+  return merged
 }
 
 function readOptions(input?: PluginOptions): ConnectorOptions {
@@ -141,11 +208,30 @@ function readOptions(input?: PluginOptions): ConnectorOptions {
     providerID: stringOption(input.providerID),
     providerName: stringOption(input.providerName),
     protocol: input.protocol === "responses" ? "responses" : input.protocol === "chat" ? "chat" : undefined,
+    modelMetadataURL:
+      input.modelMetadataURL === false ? false : stringOption(input.modelMetadataURL),
     discoveryTimeoutMs:
       typeof input.discoveryTimeoutMs === "number" && input.discoveryTimeoutMs > 0
         ? input.discoveryTimeoutMs
         : undefined,
   }
+}
+
+function discoverProtocols(input: {
+  url: string | false
+  timeoutMs: number
+}): Promise<{ catalog: ModelProtocolCatalog; error?: string }> {
+  if (input.url === false) return Promise.resolve({ catalog: {} as ModelProtocolCatalog })
+
+  return discoverModelProtocols({
+    url: input.url,
+    timeoutMs: input.timeoutMs,
+  })
+    .then((catalog) => ({ catalog }))
+    .catch((error) => ({
+      catalog: {} as ModelProtocolCatalog,
+      error: error instanceof Error ? error.message : String(error),
+    }))
 }
 
 function stringOption(value: unknown) {

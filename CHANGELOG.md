@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Dynamically route models with Anthropic protocol metadata through
+  `/v1/messages` instead of OpenAI-compatible chat completions, without
+  hard-coding model IDs.
+- Preserve discovered model protocol metadata when users customize individual
+  model settings.
+
 ## [0.1.1] - 2026-07-25
 
 ### Changed

@@ -9,7 +9,10 @@ directly in [OpenCode](https://opencode.ai/).
 
 The plugin discovers CLIProxyAPI's live `/v1/models` catalog whenever OpenCode
 starts. Available models appear in the normal `/models` picker under
-**CLIProxyAPI**, with no hard-coded model list to maintain.
+**CLIProxyAPI**. OpenCode Go models that expose Anthropic-compatible endpoints
+are automatically routed through `/v1/messages` using live model metadata from
+[models.dev](https://models.dev/); the remaining discovered models continue to
+use the provider's configured default protocol. No model IDs are hard-coded.
 
 ## Quick start
 
@@ -108,8 +111,12 @@ The recommended configuration is the global plugin entry shown above:
 | `apiKey` | `CLIPROXY_API_KEY` | CLIProxyAPI key |
 | `providerID` | `cliproxyapi` | ID used in `provider/model` names |
 | `providerName` | `CLIProxyAPI` | Name displayed in the model picker |
-| `protocol` | `chat` | `chat` uses `/chat/completions`; `responses` uses `/responses` |
+| `protocol` | `chat` | Default protocol: `chat` uses `/chat/completions`; `responses` uses `/responses`. Models marked as Anthropic-compatible by dynamic metadata override this per model. |
+| `modelMetadataURL` | `https://models.dev/api.json` | Dynamic model-level protocol metadata. Set to `false` to disable enrichment and use only the default protocol. |
 | `discoveryTimeoutMs` | `10000` | Startup model-discovery timeout |
+
+If model metadata cannot be reached, the plugin logs a warning and keeps the
+CLIProxyAPI-discovered models available with the configured default protocol.
 
 ### Optional environment variables
 

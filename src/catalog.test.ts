@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { discoverModels, normalizeBaseURL, parseCatalog } from "./catalog.js"
+import {
+  discoverModelProtocols,
+  discoverModels,
+  normalizeBaseURL,
+  parseCatalog,
+  parseModelProtocolCatalog,
+} from "./catalog.js"
 
 describe("normalizeBaseURL", () => {
   test.each([
@@ -62,5 +68,72 @@ describe("discoverModels", () => {
         fetcher: async () => Response.json({ error: "Missing API key" }, { status: 401 }),
       }),
     ).rejects.toThrow('HTTP 401: {"error":"Missing API key"}')
+  })
+})
+
+describe("parseModelProtocolCatalog", () => {
+  test("indexes provider defaults and model-level SDK overrides", () => {
+    expect(
+      parseModelProtocolCatalog({
+        acme: {
+          npm: "@ai-sdk/openai-compatible",
+          models: {
+            "chat-model": {},
+            "messages-model": {
+              provider: {
+                npm: "@ai-sdk/anthropic",
+              },
+            },
+          },
+        },
+        malformed: {
+          models: [],
+        },
+      }),
+    ).toEqual({
+      acme: {
+        npm: "@ai-sdk/openai-compatible",
+        models: {
+          "messages-model": "@ai-sdk/anthropic",
+        },
+      },
+    })
+  })
+
+  test("rejects a malformed catalog", () => {
+    expect(() => parseModelProtocolCatalog([])).toThrow("non-object catalog")
+  })
+})
+
+describe("discoverModelProtocols", () => {
+  test("fetches protocol metadata from the configured URL", async () => {
+    let requestedURL = ""
+    const catalog = await discoverModelProtocols({
+      url: "https://metadata.test/models.json",
+      timeoutMs: 1_000,
+      fetcher: async (input) => {
+        requestedURL = String(input)
+        return Response.json({
+          acme: {
+            models: {
+              "messages-model": {
+                provider: {
+                  npm: "@ai-sdk/anthropic",
+                },
+              },
+            },
+          },
+        })
+      },
+    })
+
+    expect(requestedURL).toBe("https://metadata.test/models.json")
+    expect(catalog).toEqual({
+      acme: {
+        models: {
+          "messages-model": "@ai-sdk/anthropic",
+        },
+      },
+    })
   })
 })
