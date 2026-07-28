@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-28
+
 ### Fixed
 
 - Dynamically route models with Anthropic protocol metadata through
@@ -34,6 +36,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Automatic model names and capability hints in OpenCode's model picker.
 - Local plugin and npm package installation flows.
 
-[Unreleased]: https://github.com/yourcasualdev/opencode-cliproxyapi/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/yourcasualdev/opencode-cliproxyapi/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/yourcasualdev/opencode-cliproxyapi/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/yourcasualdev/opencode-cliproxyapi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yourcasualdev/opencode-cliproxyapi/releases/tag/v0.1.0
