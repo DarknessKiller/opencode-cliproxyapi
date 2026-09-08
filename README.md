@@ -1,11 +1,13 @@
 # OpenCode CLIProxyAPI
 
 [![CI](https://github.com/DarknessKiller/opencode-cliproxyapi/actions/workflows/ci.yml/badge.svg)](https://github.com/DarknessKiller/opencode-cliproxyapi/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/opencode-cliproxyapi)](https://www.npmjs.com/package/opencode-cliproxyapi)
+[![npm](https://img.shields.io/npm/v/@darknesskiller/opencode-cliproxyapi)](https://www.npmjs.com/package/@darknesskiller/opencode-cliproxyapi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Use every model exposed by [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
-directly in [OpenCode](https://opencode.ai/).
+Fork of [opencode-cliproxyapi](https://github.com/yourcasualdev/opencode-cliproxyapi)
+that uses every model exposed by [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+directly in [OpenCode](https://opencode.ai/). This fork adds automatic
+reasoning-effort configuration queried from the CLIProxyAPI server itself.
 
 The plugin discovers CLIProxyAPI's live `/v1/models` catalog whenever OpenCode
 starts. Available models appear in the normal `/models` picker under
@@ -30,26 +32,11 @@ plugin's previous id-based heuristics.
 
 You need OpenCode, a running CLIProxyAPI server, and one of its API keys.
 
-### 1. Install from GitHub
+### 1. Install from npm
 
-The plugin is not published to npm yet, so install the current development
-version straight from the repository. You need [Bun](https://bun.sh) to build
-it once:
-
-```bash
-git clone https://github.com/DarknessKiller/opencode-cliproxyapi ~/opencode-cliproxyapi
-cd ~/opencode-cliproxyapi
-bun install
-bun run build
-```
-
-To update later, pull and rebuild:
-
-```bash
-git -C ~/opencode-cliproxyapi pull
-bun --cwd ~/opencode-cliproxyapi install
-bun --cwd ~/opencode-cliproxyapi run build
-```
+The plugin is published as `@darknesskiller/opencode-cliproxyapi`. OpenCode
+installs npm plugins automatically when it starts, so listing the package in
+your config (next step) is enough — no manual download or build.
 
 ### 2. Save your connection
 
@@ -60,8 +47,7 @@ Open your global OpenCode config:
 ```
 
 Create it if it does not exist; either `opencode.json` or `opencode.jsonc`
-works. Configure the plugin entry with the absolute path to the cloned
-repository (the build output is `dist/index.js` inside it), plus your
+works. Configure the plugin entry with the npm package name, plus your
 persistent server URL and API key:
 
 ```json
@@ -69,7 +55,7 @@ persistent server URL and API key:
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "/home/you/opencode-cliproxyapi",
+      "@darknesskiller/opencode-cliproxyapi",
       {
         "baseURL": "http://your-server:8317",
         "apiKey": "your-cli-proxy-api-key"
@@ -79,8 +65,10 @@ persistent server URL and API key:
 }
 ```
 
-Path plugin entries resolve against the directory OpenCode is started from, so
-use an absolute path (or a `file://` URL) rather than `~` or a relative path.
+The first OpenCode start downloads the package; later releases are picked up
+after OpenCode restarts. Do not install the original
+`opencode-cliproxyapi` package at the same time — both register the same
+`cliproxyapi` provider.
 
 The URL may include `/v1`, but it is not required. If `baseURL` is omitted, the
 plugin uses `http://localhost:8317/v1`.
@@ -120,14 +108,14 @@ OpenCode whenever the model catalog on CLIProxyAPI changes.
 ## Configuration
 
 The recommended configuration is the global plugin entry shown above (with
-the path to your clone):
+the npm package name):
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "/home/you/opencode-cliproxyapi",
+      "@darknesskiller/opencode-cliproxyapi",
       {
         "baseURL": "http://your-server:8317",
         "apiKey": "your-cli-proxy-api-key",
@@ -215,10 +203,11 @@ environment variables to your shell profile.
 
 ### The plugin does not load after updating
 
-Path plugin entries need the built output, so after `git pull` always rebuild
-(`bun install && bun run build`) and restart OpenCode. Check that the path in
-the global config is absolute and still points at your clone; `dist/` is not
-committed to the repository.
+Restart OpenCode so it picks up the newest published version of the npm
+package. If the package was never installed, check that the name in the
+`plugin` list is exactly `@darknesskiller/opencode-cliproxyapi` and that you
+are not also loading the original `opencode-cliproxyapi` package (both
+register the same `cliproxyapi` provider).
 
 ## Development
 

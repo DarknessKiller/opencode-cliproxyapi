@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-09
 
 ### Added
 
@@ -22,7 +22,6 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - A model's `reasoning` flag now prefers CLIProxyAPI's reported effort levels
   over the previous id-based heuristic; the heuristic remains the fallback for
   servers that do not report levels.
-
 
 ## [0.1.2] - 2026-07-28
 
@@ -53,7 +52,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Automatic model names and capability hints in OpenCode's model picker.
 - Local plugin and npm package installation flows.
 
-[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/releases/tag/v0.1.0

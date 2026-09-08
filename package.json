@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode-cliproxyapi",
-  "version": "0.1.2",
-  "description": "Discover and use every model exposed by CLIProxyAPI in OpenCode.",
+  "name": "@darknesskiller/opencode-cliproxyapi",
+  "version": "0.2.0",
+  "description": "Fork of opencode-cliproxyapi that discovers CLIProxyAPI models and auto-configures reasoning-effort variants in OpenCode.",
   "type": "module",
   "license": "MIT",
   "author": "İbrahim BABAL",
