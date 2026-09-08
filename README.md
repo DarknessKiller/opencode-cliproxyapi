@@ -1,6 +1,6 @@
 # OpenCode CLIProxyAPI
 
-[![CI](https://github.com/yourcasualdev/opencode-cliproxyapi/actions/workflows/ci.yml/badge.svg)](https://github.com/yourcasualdev/opencode-cliproxyapi/actions/workflows/ci.yml)
+[![CI](https://github.com/DarknessKiller/opencode-cliproxyapi/actions/workflows/ci.yml/badge.svg)](https://github.com/DarknessKiller/opencode-cliproxyapi/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/opencode-cliproxyapi)](https://www.npmjs.com/package/opencode-cliproxyapi)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -37,7 +37,7 @@ version straight from the repository. You need [Bun](https://bun.sh) to build
 it once:
 
 ```bash
-git clone https://github.com/yourcasualdev/opencode-cliproxyapi ~/opencode-cliproxyapi
+git clone https://github.com/DarknessKiller/opencode-cliproxyapi ~/opencode-cliproxyapi
 cd ~/opencode-cliproxyapi
 bun install
 bun run build
@@ -223,7 +223,7 @@ committed to the repository.
 ## Development
 
 ```bash
-git clone https://github.com/yourcasualdev/opencode-cliproxyapi.git
+git clone https://github.com/DarknessKiller/opencode-cliproxyapi.git
 cd opencode-cliproxyapi
 bun install
 bun run check

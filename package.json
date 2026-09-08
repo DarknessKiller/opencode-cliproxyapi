@@ -6,13 +6,13 @@
   "type": "module",
   "license": "MIT",
   "author": "İbrahim BABAL",
-  "homepage": "https://github.com/yourcasualdev/opencode-cliproxyapi#readme",
+  "homepage": "https://github.com/DarknessKiller/opencode-cliproxyapi#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourcasualdev/opencode-cliproxyapi.git"
+    "url": "git+https://github.com/DarknessKiller/opencode-cliproxyapi.git"
   },
   "bugs": {
-    "url": "https://github.com/yourcasualdev/opencode-cliproxyapi/issues"
+    "url": "https://github.com/DarknessKiller/opencode-cliproxyapi/issues"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
