@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test"
 import {
   discoverModelProtocols,
   discoverModels,
+  discoverReasoningEfforts,
   normalizeBaseURL,
   parseCatalog,
   parseModelProtocolCatalog,
+  parseReasoningEffortCatalog,
 } from "./catalog.js"
 
 describe("normalizeBaseURL", () => {
@@ -68,6 +70,84 @@ describe("discoverModels", () => {
         fetcher: async () => Response.json({ error: "Missing API key" }, { status: 401 }),
       }),
     ).rejects.toThrow('HTTP 401: {"error":"Missing API key"}')
+  })
+})
+
+describe("parseReasoningEffortCatalog", () => {
+  test("indexes per-model reasoning levels from the codex-client catalog", () => {
+    expect(
+      parseReasoningEffortCatalog({
+        models: [
+          {
+            slug: "gpt-5.6-terra",
+            supported_reasoning_levels: [
+              { effort: "none" },
+              { effort: "low", description: "Low effort" },
+              { effort: "low" },
+              { effort: "high" },
+            ],
+            default_reasoning_level: "low",
+          },
+          {
+            slug: "gemini-3.1-pro-low",
+            supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+          },
+          { slug: "no-levels", supported_reasoning_levels: [] },
+          { id: "no-slug", supported_reasoning_levels: [{ effort: "high" }] },
+          null,
+        ],
+      }),
+    ).toEqual({
+      "gpt-5.6-terra": { levels: ["none", "low", "high"], defaultLevel: "low" },
+      "gemini-3.1-pro-low": { levels: ["low", "high"] },
+    })
+  })
+
+  test("returns an empty catalog when the server lacks the codex-client view", () => {
+    expect(parseReasoningEffortCatalog({ data: [{ id: "gpt-5.6-terra" }] })).toEqual({})
+    expect(parseReasoningEffortCatalog({ models: [] })).toEqual({})
+    expect(parseReasoningEffortCatalog([])).toEqual({})
+  })
+})
+
+describe("discoverReasoningEfforts", () => {
+  test("requests the codex-client catalog and indexes effort levels", async () => {
+    let requestedURL = ""
+    let authorization = ""
+    const catalog = await discoverReasoningEfforts({
+      baseURL: "http://cliproxy.test/v1",
+      apiKey: "secret",
+      timeoutMs: 1_000,
+      fetcher: async (input, init) => {
+        requestedURL = String(input)
+        authorization = new Headers(init?.headers).get("authorization") ?? ""
+        return Response.json({
+          models: [
+            {
+              slug: "gpt-5.6-terra",
+              supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+              default_reasoning_level: "low",
+            },
+          ],
+        })
+      },
+    })
+
+    expect(requestedURL).toBe("http://cliproxy.test/v1/models?client_version=1.0.0")
+    expect(authorization).toBe("Bearer secret")
+    expect(catalog).toEqual({
+      "gpt-5.6-terra": { levels: ["low", "high"], defaultLevel: "low" },
+    })
+  })
+
+  test("reports an API error", async () => {
+    await expect(
+      discoverReasoningEfforts({
+        baseURL: "http://cliproxy.test/v1",
+        timeoutMs: 1_000,
+        fetcher: async () => Response.json({ error: "boom" }, { status: 500 }),
+      }),
+    ).rejects.toThrow('HTTP 500: {"error":"boom"}')
   })
 })
 

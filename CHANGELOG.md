@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Auto-configure reasoning effort per model from CLIProxyAPI's own model
+  catalog. Models the server reports with supported reasoning levels are
+  marked as reasoning models, get their default effort configured, and expose
+  every supported effort as an OpenCode model variant for the variant-cycle
+  keybind.
+- Query CLIProxyAPI's codex-client model catalog (`/v1/models?client_version=`)
+  to discover per-model reasoning levels at startup.
+
+### Changed
+
+- A model's `reasoning` flag now prefers CLIProxyAPI's reported effort levels
+  over the previous id-based heuristic; the heuristic remains the fallback for
+  servers that do not report levels.
+
+
 ## [0.1.2] - 2026-07-28
 
 ### Fixed

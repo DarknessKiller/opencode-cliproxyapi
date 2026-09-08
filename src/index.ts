@@ -2,9 +2,11 @@ import type { Config, Plugin, PluginModule, PluginOptions } from "@opencode-ai/p
 import {
   discoverModelProtocols,
   discoverModels,
+  discoverReasoningEfforts,
   normalizeBaseURL,
   type CatalogModel,
   type ModelProtocolCatalog,
+  type ReasoningEffortCatalog,
 } from "./catalog.js"
 
 const DEFAULT_BASE_URL = "http://localhost:8317/v1"
@@ -25,6 +27,10 @@ type ConnectorOptions = {
 
 type ProviderConfig = NonNullable<Config["provider"]>[string]
 type ModelConfig = NonNullable<ProviderConfig["models"]>[string]
+// OpenCode's config schema supports per-model variants; the pinned SDK types lag behind it.
+type DiscoveredModelConfig = ModelConfig & {
+  variants?: Record<string, { reasoningEffort: string }>
+}
 
 export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
   const options = readOptions(rawOptions)
@@ -44,7 +50,7 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
 
       try {
         const timeoutMs = options.discoveryTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS
-        const [catalog, protocolDiscovery] = await Promise.all([
+        const [catalog, protocolDiscovery, effortDiscovery] = await Promise.all([
           discoverModels({
             baseURL,
             apiKey,
@@ -54,14 +60,22 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
             url: options.modelMetadataURL ?? DEFAULT_MODEL_METADATA_URL,
             timeoutMs,
           }),
+          discoverEffortLevels({
+            baseURL,
+            apiKey,
+            timeoutMs,
+          }),
         ])
 
-        if (protocolDiscovery.error) {
+        const discoveryErrors = [protocolDiscovery.error, effortDiscovery.error].filter(
+          (error): error is string => error !== undefined,
+        )
+        for (const message of discoveryErrors) {
           await client.app.log({
             body: {
               service: "opencode-cliproxyapi",
               level: "warn",
-              message: protocolDiscovery.error,
+              message,
             },
           })
         }
@@ -74,6 +88,7 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
           protocol: options.protocol ?? "chat",
           catalog,
           protocolCatalog: protocolDiscovery.catalog,
+          effortCatalog: effortDiscovery.catalog,
         })
 
         await client.app.log({
@@ -104,11 +119,13 @@ export default {
 export {
   discoverModelProtocols,
   discoverModels,
+  discoverReasoningEfforts,
   normalizeBaseURL,
   parseCatalog,
   parseModelProtocolCatalog,
+  parseReasoningEffortCatalog,
 } from "./catalog.js"
-export type { CatalogModel, ModelProtocolCatalog } from "./catalog.js"
+export type { CatalogModel, ModelProtocolCatalog, ReasoningEffortCatalog } from "./catalog.js"
 
 function addProvider(
   config: Config,
@@ -120,16 +137,17 @@ function addProvider(
     protocol: "chat" | "responses"
     catalog: CatalogModel[]
     protocolCatalog: ModelProtocolCatalog
+    effortCatalog: ReasoningEffortCatalog
   },
 ) {
   const existing = config.provider?.[input.providerID]
-  const discovered: Record<string, ModelConfig> = Object.fromEntries(
+  const discovered: Record<string, DiscoveredModelConfig> = Object.fromEntries(
     input.catalog.map((model) => [
       model.id,
       {
         name: displayName(model.id),
         tool_call: !isImageModel(model.id),
-        reasoning: isReasoningModel(model.id),
+        reasoning: isReasoningModel(model.id, input.effortCatalog[model.id]),
         attachment: supportsAttachments(model.id),
         ...(model.ownedBy &&
         resolveModelNpm(input.protocolCatalog, model.ownedBy, model.id) ===
@@ -148,6 +166,7 @@ function addProvider(
               },
             }
           : {}),
+        ...reasoningEffortConfig(model, input),
       },
     ]),
   )
@@ -168,6 +187,36 @@ function addProvider(
       },
       models: mergeModels(discovered, existing?.models),
     },
+  }
+}
+
+// Maps a model to the effort levels CLIProxyAPI itself reports for it. Levels
+// arrive as OpenAI-style reasoning_effort values in the codex-client catalog;
+// they only reach the wire unchanged on OpenAI-compatible transports, so
+// Anthropic-routed models keep OpenCode's own Claude variant generation.
+function reasoningEffortConfig(
+  model: CatalogModel,
+  input: { protocolCatalog: ModelProtocolCatalog; effortCatalog: ReasoningEffortCatalog },
+): DiscoveredModelConfig {
+  const efforts = input.effortCatalog[model.id]
+  if (!efforts) return {}
+
+  const anthropicRouted =
+    model.ownedBy !== undefined &&
+    resolveModelNpm(input.protocolCatalog, model.ownedBy, model.id) === "@ai-sdk/anthropic"
+  if (anthropicRouted) return {}
+
+  const levels = efforts.levels.filter((level) => level !== "none")
+  if (levels.length === 0) return {}
+
+  const defaultLevel =
+    efforts.defaultLevel !== undefined && efforts.levels.includes(efforts.defaultLevel)
+      ? efforts.defaultLevel
+      : undefined
+
+  return {
+    ...(defaultLevel ? { options: { reasoningEffort: defaultLevel } } : {}),
+    variants: Object.fromEntries(levels.map((level) => [level, { reasoningEffort: level }])),
   }
 }
 
@@ -234,6 +283,21 @@ function discoverProtocols(input: {
     }))
 }
 
+// Reasoning-level discovery is best-effort: CLIProxyAPI versions without the
+// codex-client catalog simply keep models on their heuristic defaults.
+function discoverEffortLevels(input: {
+  baseURL: string
+  apiKey?: string
+  timeoutMs: number
+}): Promise<{ catalog: ReasoningEffortCatalog; error?: string }> {
+  return discoverReasoningEfforts(input)
+    .then((catalog) => ({ catalog }))
+    .catch((error) => ({
+      catalog: {},
+      error: error instanceof Error ? error.message : String(error),
+    }))
+}
+
 function stringOption(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value : undefined
 }
@@ -255,7 +319,10 @@ function isImageModel(modelID: string) {
   return /(?:^|-)image(?:-|$)/i.test(modelID)
 }
 
-function isReasoningModel(modelID: string) {
+// Reasoning-capable unless CLIProxyAPI's own effort catalog proves otherwise.
+// A reported level list always wins over the id heuristic.
+function isReasoningModel(modelID: string, efforts?: { levels: string[]; defaultLevel?: string }) {
+  if (efforts?.levels.length) return efforts.levels.some((level) => level !== "none")
   return /thinking|reasoning|codex|gpt-(?:5|oss)/i.test(modelID)
 }
 

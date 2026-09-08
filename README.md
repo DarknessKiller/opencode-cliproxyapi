@@ -14,6 +14,18 @@ are automatically routed through `/v1/messages` using live model metadata from
 [models.dev](https://models.dev/); the remaining discovered models continue to
 use the provider's configured default protocol. No model IDs are hard-coded.
 
+For every model whose reasoning levels are known to the CLIProxyAPI server
+itself, the plugin also:
+
+- marks the model as a reasoning model,
+- sets the server-reported default reasoning effort as the model default, and
+- registers each supported effort (`low`, `medium`, `high`, …) as a model
+  variant you can cycle with the variant keybind.
+
+Effort levels are taken from CLIProxyAPI's codex-client catalog (the same data
+its Codex clients use), so models that the server cannot describe keep the
+plugin's previous id-based heuristics.
+
 ## Quick start
 
 You need OpenCode, a running CLIProxyAPI server, and one of its API keys.
