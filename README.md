@@ -30,10 +30,25 @@ plugin's previous id-based heuristics.
 
 You need OpenCode, a running CLIProxyAPI server, and one of its API keys.
 
-### 1. Install
+### 1. Install from GitHub
+
+The plugin is not published to npm yet, so install the current development
+version straight from the repository. You need [Bun](https://bun.sh) to build
+it once:
 
 ```bash
-opencode plugin opencode-cliproxyapi --global
+git clone https://github.com/yourcasualdev/opencode-cliproxyapi ~/opencode-cliproxyapi
+cd ~/opencode-cliproxyapi
+bun install
+bun run build
+```
+
+To update later, pull and rebuild:
+
+```bash
+git -C ~/opencode-cliproxyapi pull
+bun --cwd ~/opencode-cliproxyapi install
+bun --cwd ~/opencode-cliproxyapi run build
 ```
 
 ### 2. Save your connection
@@ -44,15 +59,17 @@ Open your global OpenCode config:
 ~/.config/opencode/opencode.json
 ```
 
-The installer may have created `opencode.jsonc` instead. Either filename works.
-Configure the plugin entry with your persistent server URL and API key:
+Create it if it does not exist; either `opencode.json` or `opencode.jsonc`
+works. Configure the plugin entry with the absolute path to the cloned
+repository (the build output is `dist/index.js` inside it), plus your
+persistent server URL and API key:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "opencode-cliproxyapi",
+      "/home/you/opencode-cliproxyapi",
       {
         "baseURL": "http://your-server:8317",
         "apiKey": "your-cli-proxy-api-key"
@@ -61,6 +78,9 @@ Configure the plugin entry with your persistent server URL and API key:
   ]
 }
 ```
+
+Path plugin entries resolve against the directory OpenCode is started from, so
+use an absolute path (or a `file://` URL) rather than `~` or a relative path.
 
 The URL may include `/v1`, but it is not required. If `baseURL` is omitted, the
 plugin uses `http://localhost:8317/v1`.
@@ -99,14 +119,15 @@ OpenCode whenever the model catalog on CLIProxyAPI changes.
 
 ## Configuration
 
-The recommended configuration is the global plugin entry shown above:
+The recommended configuration is the global plugin entry shown above (with
+the path to your clone):
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     [
-      "opencode-cliproxyapi",
+      "/home/you/opencode-cliproxyapi",
       {
         "baseURL": "http://your-server:8317",
         "apiKey": "your-cli-proxy-api-key",
@@ -191,6 +212,13 @@ opencode models cliproxyapi
 
 Move the connection to the recommended global OpenCode config, or add the
 environment variables to your shell profile.
+
+### The plugin does not load after updating
+
+Path plugin entries need the built output, so after `git pull` always rebuild
+(`bun install && bun run build`) and restart OpenCode. Check that the path in
+the global config is absolute and still points at your clone; `dist/` is not
+committed to the repository.
 
 ## Development
 
