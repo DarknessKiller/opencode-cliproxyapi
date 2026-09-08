@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.1] - 2026-09-09
 
 ### Fixed
 
@@ -63,7 +63,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Automatic model names and capability hints in OpenCode's model picker.
 - Local plugin and npm package installation flows.
 
-[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.0...v0.1.1

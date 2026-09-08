@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@darknesskiller/opencode-cliproxyapi",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Fork of opencode-cliproxyapi that discovers CLIProxyAPI models and auto-configures reasoning-effort variants in OpenCode.",
   "type": "module",
   "license": "MIT",
