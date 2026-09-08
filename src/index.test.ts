@@ -263,11 +263,15 @@ describe("CLIProxyAPIPlugin", () => {
         reasoning: true,
         options: { reasoningEffort: "medium" },
         variants: {
+          none: { reasoningEffort: "none" },
           low: { reasoningEffort: "low" },
           medium: { reasoningEffort: "medium" },
           high: { reasoningEffort: "high" },
           xhigh: { reasoningEffort: "xhigh" },
           max: { reasoningEffort: "max" },
+          // OpenCode defaults that the server does not report stay disabled.
+          minimal: { disabled: true },
+          ultra: { disabled: true },
         },
       })
       expect(models?.["gemini-3.1-pro-low"]).toMatchObject({
@@ -276,6 +280,12 @@ describe("CLIProxyAPIPlugin", () => {
         variants: {
           low: { reasoningEffort: "low" },
           high: { reasoningEffort: "high" },
+          none: { disabled: true },
+          minimal: { disabled: true },
+          medium: { disabled: true },
+          xhigh: { disabled: true },
+          max: { disabled: true },
+          ultra: { disabled: true },
         },
       })
       // Anthropic-routed models keep OpenCode's Claude variant generation.
@@ -286,6 +296,52 @@ describe("CLIProxyAPIPlugin", () => {
       expect(models?.["claude-sonnet-4-6"]?.options).toBeUndefined()
       // A model the server reports with no effort levels falls back to heuristics.
       expect(models?.["plain-model"]?.reasoning).toBe(false)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("does not leak OpenCode default efforts the server did not report", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      if (url.startsWith("http://cliproxy.test:8317/v1/models?")) {
+        return Response.json({
+          models: [
+            {
+              slug: "deepseek-v4",
+              supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }, { effort: "max" }],
+              default_reasoning_level: "high",
+            },
+          ],
+        })
+      }
+      return Response.json({ data: [{ id: "deepseek-v4", owned_by: "deepseek" }] })
+    }
+
+    try {
+      const plugin = await CLIProxyAPIPlugin(
+        {
+          client: {
+            app: {
+              log: async () => ({}),
+            },
+          },
+        } as PluginInput,
+        { baseURL: "http://cliproxy.test:8317" },
+      )
+      const config: Config = {}
+
+      await plugin.config?.(config)
+
+      const variants = config.provider?.cliproxyapi?.models?.["deepseek-v4"]?.variants
+      expect(Object.keys(variants ?? {}).filter((key) => !variants?.[key]?.disabled)).toEqual([
+        "low",
+        "high",
+        "max",
+      ])
+      // OpenCode would otherwise add its own default "medium" effort here.
+      expect(variants?.["medium"]).toEqual({ disabled: true })
     } finally {
       globalThis.fetch = originalFetch
     }

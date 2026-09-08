@@ -5,6 +5,17 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Stop OpenCode from adding its own default reasoning efforts on top of the
+  server-reported ones. OpenCode merges per-model default variants
+  (e.g. `medium` for OpenAI-compatible models) with the plugin's variants, so
+  models configured on CLIProxyAPI with only `low`/`high`/`max` used to show
+  `low`/`medium`/`high`/`max` in the picker. Unreported default efforts are
+  now disabled and the picker shows exactly the server-supported set.
+
 ## [0.2.0] - 2026-09-09
 
 ### Added

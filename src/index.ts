@@ -28,8 +28,9 @@ type ConnectorOptions = {
 type ProviderConfig = NonNullable<Config["provider"]>[string]
 type ModelConfig = NonNullable<ProviderConfig["models"]>[string]
 // OpenCode's config schema supports per-model variants; the pinned SDK types lag behind it.
+type VariantConfig = { reasoningEffort?: string; disabled?: boolean }
 type DiscoveredModelConfig = ModelConfig & {
-  variants?: Record<string, { reasoningEffort: string }>
+  variants?: Record<string, VariantConfig>
 }
 
 export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
@@ -216,8 +217,30 @@ function reasoningEffortConfig(
 
   return {
     ...(defaultLevel ? { options: { reasoningEffort: defaultLevel } } : {}),
-    variants: Object.fromEntries(levels.map((level) => [level, { reasoningEffort: level }])),
+    variants: {
+      ...Object.fromEntries(
+        efforts.levels.map((level) => [level, { reasoningEffort: level }]),
+      ),
+      // OpenCode merges its own per-model default variants (low/medium/high plus
+      // family extras such as max for deepseek-v4) on top of config variants.
+      // Disable every effort it might add that CLIProxyAPI did not report, so
+      // the picker shows exactly the server-supported set.
+      ...disabledVariants(efforts.levels),
+    },
   }
+}
+
+// Effort keys OpenCode can generate by default for OpenAI-compatible models.
+const OPENCODE_DEFAULT_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
+
+function disabledVariants(supported: string[]) {
+  const supportedSet = new Set(supported)
+  return Object.fromEntries(
+    OPENCODE_DEFAULT_EFFORTS.filter((effort) => !supportedSet.has(effort)).map((effort) => [
+      effort,
+      { disabled: true },
+    ]),
+  )
 }
 
 function resolveModelNpm(
