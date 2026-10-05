@@ -1,29 +1,28 @@
-import type { Config, Plugin, PluginModule, PluginOptions } from "@opencode-ai/plugin"
+import type { Config, Plugin, PluginModule } from "@opencode-ai/plugin"
+import { normalizeBaseURL, type CatalogModel, type ModelProtocolCatalog, type ReasoningEffortCatalog } from "./catalog.js"
 import {
-  discoverModelProtocols,
-  discoverModels,
-  discoverReasoningEfforts,
-  normalizeBaseURL,
-  type CatalogModel,
-  type ModelProtocolCatalog,
-  type ReasoningEffortCatalog,
-} from "./catalog.js"
+  DEFAULT_BASE_URL,
+  DEFAULT_DISCOVERY_TIMEOUT_MS,
+  DEFAULT_MODEL_METADATA_URL,
+  DEFAULT_PROVIDER_ID,
+  DEFAULT_PROVIDER_NAME,
+  V1_ANTHROPIC_PACKAGE,
+  V1_CHAT_PACKAGE,
+  V1_RESPONSES_PACKAGE,
+  discoverCatalog,
+  displayName,
+  isImageModel,
+  isReasoningModel,
+  readOptions,
+  resolveModelNpm,
+  stringOption,
+  supportedEffortLevels,
+  supportsAttachments,
+  type CatalogDiscovery,
+  type ConnectorOptions,
+} from "./shared.js"
+import { setup } from "./plugin-v2.js"
 
-const DEFAULT_BASE_URL = "http://localhost:8317/v1"
-const DEFAULT_PROVIDER_ID = "cliproxyapi"
-const DEFAULT_PROVIDER_NAME = "CLIProxyAPI"
-const DEFAULT_DISCOVERY_TIMEOUT_MS = 10_000
-const DEFAULT_MODEL_METADATA_URL = "https://models.dev/api.json"
-
-type ConnectorOptions = {
-  baseURL?: string
-  apiKey?: string
-  providerID?: string
-  providerName?: string
-  protocol?: "chat" | "responses"
-  modelMetadataURL?: string | false
-  discoveryTimeoutMs?: number
-}
 
 type ProviderConfig = NonNullable<Config["provider"]>[string]
 type ModelConfig = NonNullable<ProviderConfig["models"]>[string]
@@ -51,27 +50,14 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
 
       try {
         const timeoutMs = options.discoveryTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS
-        const [catalog, protocolDiscovery, effortDiscovery] = await Promise.all([
-          discoverModels({
-            baseURL,
-            apiKey,
-            timeoutMs,
-          }),
-          discoverProtocols({
-            url: options.modelMetadataURL ?? DEFAULT_MODEL_METADATA_URL,
-            timeoutMs,
-          }),
-          discoverEffortLevels({
-            baseURL,
-            apiKey,
-            timeoutMs,
-          }),
-        ])
+        const discovery = await discoverCatalog({
+          baseURL,
+          apiKey,
+          modelMetadataURL: options.modelMetadataURL ?? DEFAULT_MODEL_METADATA_URL,
+          timeoutMs,
+        })
 
-        const discoveryErrors = [protocolDiscovery.error, effortDiscovery.error].filter(
-          (error): error is string => error !== undefined,
-        )
-        for (const message of discoveryErrors) {
+        for (const message of discovery.errors) {
           await client.app.log({
             body: {
               service: "opencode-cliproxyapi",
@@ -87,16 +73,16 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
           baseURL,
           apiKey,
           protocol: options.protocol ?? "chat",
-          catalog,
-          protocolCatalog: protocolDiscovery.catalog,
-          effortCatalog: effortDiscovery.catalog,
+          catalog: discovery.catalog,
+          protocolCatalog: discovery.protocolCatalog,
+          effortCatalog: discovery.effortCatalog,
         })
 
         await client.app.log({
           body: {
             service: "opencode-cliproxyapi",
             level: "info",
-            message: `Discovered ${catalog.length} CLIProxyAPI models from ${baseURL}`,
+            message: `Discovered ${discovery.catalog.length} CLIProxyAPI models from ${baseURL}`,
           },
         })
       } catch (error) {
@@ -113,10 +99,15 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
   }
 }
 
+/**
+ * Dual V1/V2 entry point. OpenCode V2 calls `setup(ctx)`; V1 (1.18.29 and
+ * newer) calls `server(ctx)` for the classic hooks object.
+ */
 export default {
   id: "opencode-cliproxyapi",
   server: CLIProxyAPIPlugin,
-} satisfies PluginModule
+  setup,
+} satisfies PluginModule & { setup: typeof setup }
 export {
   discoverModelProtocols,
   discoverModels,
@@ -152,10 +143,10 @@ function addProvider(
         attachment: supportsAttachments(model.id),
         ...(model.ownedBy &&
         resolveModelNpm(input.protocolCatalog, model.ownedBy, model.id) ===
-          "@ai-sdk/anthropic"
+          V1_ANTHROPIC_PACKAGE
           ? {
               provider: {
-                npm: "@ai-sdk/anthropic",
+                npm: V1_ANTHROPIC_PACKAGE,
               },
             }
           : {}),
@@ -179,7 +170,7 @@ function addProvider(
       name: existing?.name ?? input.providerName,
       npm:
         existing?.npm ??
-        (input.protocol === "responses" ? "@ai-sdk/openai" : "@ai-sdk/openai-compatible"),
+        (input.protocol === "responses" ? V1_RESPONSES_PACKAGE : V1_CHAT_PACKAGE),
       env: [...new Set([...(existing?.env ?? []), "CLIPROXY_API_KEY"])],
       options: {
         ...existing?.options,
@@ -202,13 +193,8 @@ function reasoningEffortConfig(
   const efforts = input.effortCatalog[model.id]
   if (!efforts) return {}
 
-  const anthropicRouted =
-    model.ownedBy !== undefined &&
-    resolveModelNpm(input.protocolCatalog, model.ownedBy, model.id) === "@ai-sdk/anthropic"
-  if (anthropicRouted) return {}
-
-  const levels = efforts.levels.filter((level) => level !== "none")
-  if (levels.length === 0) return {}
+  const levels = supportedEffortLevels(model, input)
+  if (!levels) return {}
 
   const defaultLevel =
     efforts.defaultLevel !== undefined && efforts.levels.includes(efforts.defaultLevel)
@@ -218,9 +204,7 @@ function reasoningEffortConfig(
   return {
     ...(defaultLevel ? { options: { reasoningEffort: defaultLevel } } : {}),
     variants: {
-      ...Object.fromEntries(
-        efforts.levels.map((level) => [level, { reasoningEffort: level }]),
-      ),
+      ...Object.fromEntries(efforts.levels.map((level) => [level, { reasoningEffort: level }])),
       // OpenCode merges its own per-model default variants (low/medium/high plus
       // family extras such as max for deepseek-v4) on top of config variants.
       // Disable every effort it might add that CLIProxyAPI did not report, so
@@ -243,14 +227,6 @@ function disabledVariants(supported: string[]) {
   )
 }
 
-function resolveModelNpm(
-  catalog: ModelProtocolCatalog,
-  providerID: string,
-  modelID: string,
-): string | undefined {
-  const provider = catalog[providerID]
-  return provider?.models[modelID] ?? provider?.npm
-}
 
 function mergeModels(
   discovered: Record<string, ModelConfig>,
@@ -271,84 +247,3 @@ function mergeModels(
   return merged
 }
 
-function readOptions(input?: PluginOptions): ConnectorOptions {
-  if (!input) return {}
-
-  return {
-    baseURL: stringOption(input.baseURL),
-    apiKey: stringOption(input.apiKey),
-    providerID: stringOption(input.providerID),
-    providerName: stringOption(input.providerName),
-    protocol: input.protocol === "responses" ? "responses" : input.protocol === "chat" ? "chat" : undefined,
-    modelMetadataURL:
-      input.modelMetadataURL === false ? false : stringOption(input.modelMetadataURL),
-    discoveryTimeoutMs:
-      typeof input.discoveryTimeoutMs === "number" && input.discoveryTimeoutMs > 0
-        ? input.discoveryTimeoutMs
-        : undefined,
-  }
-}
-
-function discoverProtocols(input: {
-  url: string | false
-  timeoutMs: number
-}): Promise<{ catalog: ModelProtocolCatalog; error?: string }> {
-  if (input.url === false) return Promise.resolve({ catalog: {} as ModelProtocolCatalog })
-
-  return discoverModelProtocols({
-    url: input.url,
-    timeoutMs: input.timeoutMs,
-  })
-    .then((catalog) => ({ catalog }))
-    .catch((error) => ({
-      catalog: {} as ModelProtocolCatalog,
-      error: error instanceof Error ? error.message : String(error),
-    }))
-}
-
-// Reasoning-level discovery is best-effort: CLIProxyAPI versions without the
-// codex-client catalog simply keep models on their heuristic defaults.
-function discoverEffortLevels(input: {
-  baseURL: string
-  apiKey?: string
-  timeoutMs: number
-}): Promise<{ catalog: ReasoningEffortCatalog; error?: string }> {
-  return discoverReasoningEfforts(input)
-    .then((catalog) => ({ catalog }))
-    .catch((error) => ({
-      catalog: {},
-      error: error instanceof Error ? error.message : String(error),
-    }))
-}
-
-function stringOption(value: unknown) {
-  return typeof value === "string" && value.trim() !== "" ? value : undefined
-}
-
-function displayName(modelID: string) {
-  return modelID
-    .split("-")
-    .map((part) => {
-      const lower = part.toLowerCase()
-      if (lower === "gpt") return "GPT"
-      if (lower === "oss") return "OSS"
-      if (lower === "codex") return "Codex"
-      return part.charAt(0).toUpperCase() + part.slice(1)
-    })
-    .join(" ")
-}
-
-function isImageModel(modelID: string) {
-  return /(?:^|-)image(?:-|$)/i.test(modelID)
-}
-
-// Reasoning-capable unless CLIProxyAPI's own effort catalog proves otherwise.
-// A reported level list always wins over the id heuristic.
-function isReasoningModel(modelID: string, efforts?: { levels: string[]; defaultLevel?: string }) {
-  if (efforts?.levels.length) return efforts.levels.some((level) => level !== "none")
-  return /thinking|reasoning|codex|gpt-(?:5|oss)/i.test(modelID)
-}
-
-function supportsAttachments(modelID: string) {
-  return /^(?:claude|gemini|gpt)/i.test(modelID)
-}

@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - Unreleased
+
+### Added
+
+- OpenCode v2 support. The package now default-exports a definition object with
+  `id`, `setup`, and `server`: OpenCode v2 loads it through `setup(ctx)` and
+  registers the provider with `ctx.provider.transform` (discovered catalog,
+  `@opencode/ai/providers/*` driver package, `baseURL`/`apiKey` settings),
+  while OpenCode v1 (1.18.29 and newer) keeps calling `server(ctx)`.
+  Anthropic-endpoint models are routed through
+  `@opencode/ai/providers/anthropic` via the per-model `package` field, and
+  v2 variants list exactly the effort levels the server reported.
+- `index.ts` at the repository root so a local checkout can be used as the
+  plugin path without a build step.
+
 ## [0.2.1] - 2026-09-09
 
 ### Fixed

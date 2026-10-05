@@ -173,6 +173,50 @@ can be customized:
 }
 ```
 
+### OpenCode v2
+
+OpenCode v2 replaced the `plugin` array with `plugins` and no longer runs v1
+plugin code. This package ships a dual entrypoint: v2 calls `setup(ctx)` and
+v1 (1.18.29 and newer) calls `server(ctx)`, so one configuration works on both.
+
+```jsonc
+// OpenCode v2 (~/.config/opencode/opencode.jsonc)
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    {
+      "package": "@darknesskiller/opencode-cliproxyapi",
+      "options": {
+        "baseURL": "http://your-server:8317",
+        "apiKey": "your-cli-proxy-api-key"
+      }
+    }
+  ]
+}
+```
+
+On v2 the plugin registers the provider itself: it publishes the discovered
+catalog through `ctx.provider.transform`, selects
+`@opencode/ai/providers/openai-compatible` (or `@opencode/ai/providers/openai`
+with `protocol: "responses"`), and routes Anthropic-endpoint models through
+`@opencode/ai/providers/anthropic`. Every option in the table above works
+unchanged inside the plugin entry's `options`.
+
+To run a checkout instead of the published package, point `package` at the
+repository directory (OpenCode resolves its root `index.ts`) and use the local
+path:
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "/path/to/opencode-cliproxyapi",
+      "options": { "baseURL": "http://your-server:8317" }
+    }
+  ]
+}
+```
+
 ## Troubleshooting
 
 ### `Missing API key`
