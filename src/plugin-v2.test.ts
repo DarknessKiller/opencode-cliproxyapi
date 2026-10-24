@@ -30,7 +30,7 @@ describe("plugin-v2", () => {
       toV2Model(model, { providerID: "cliproxyapi", discovery }),
     ) as V2ModelInfo[]
 
-    expect(terra.capabilities).toEqual({ tools: true, input: ["text"], output: ["text"] })
+    expect(terra.capabilities).toEqual({ tools: true, input: ["text", "image"], output: ["text"] })
     // "none" is never offered as a variant; the rest come from the API catalog.
     expect(terra.variants).toEqual([
       { id: "low", settings: { reasoningEffort: "low" } },
@@ -39,9 +39,28 @@ describe("plugin-v2", () => {
 
     expect(image.capabilities).toEqual({ tools: false, input: ["text", "image"], output: ["image"] })
 
+    expect(claude.capabilities).toEqual({ tools: true, input: ["text", "image"], output: ["text"] })
     expect(claude.package).toBe("@opencode/ai/providers/anthropic")
     expect(claude.variants).toEqual([])
     expect(terra.package).toBeUndefined()
+  })
+
+  test("toV2Model declares image input for vision families only", () => {
+    const capabilities = (id: string) =>
+      toV2Model({ id }, { providerID: "cliproxyapi", discovery }).capabilities
+    const vision = { tools: true, input: ["text", "image"], output: ["text"] }
+    const text = { tools: true, input: ["text"], output: ["text"] }
+
+    expect(capabilities("claude-opus-example")).toEqual(vision)
+    expect(capabilities("Gemini-Example-Pro")).toEqual(vision)
+    expect(capabilities("gpt-example-mini")).toEqual(vision)
+    expect(capabilities("gpt-oss-120b")).toEqual(text)
+    expect(capabilities("deepseek-v4")).toEqual(text)
+    expect(capabilities("gpt-image-example")).toEqual({
+      tools: false,
+      input: ["text", "image"],
+      output: ["image"],
+    })
   })
 
   test("setup registers the provider with the discovered models", async () => {

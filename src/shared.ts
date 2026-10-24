@@ -89,8 +89,28 @@ export function isReasoningModel(
   return /thinking|reasoning|codex|gpt-(?:5|oss)/i.test(modelID)
 }
 
+// CLIProxyAPI's /v1/models only reports ids, so image input is inferred from
+// the model family: current Claude, Gemini and GPT chat models all accept
+// images, except the text-only gpt-oss open-weight family. OpenCode drops
+// image parts for models that do not declare image input, replacing them with
+// a "Cannot read <file>" placeholder.
 export function supportsAttachments(modelID: string) {
-  return /^(?:claude|gemini|gpt)/i.test(modelID)
+  return /^(?:claude|gemini|gpt)/i.test(modelID) && !/^gpt-oss(?:-|$)/i.test(modelID)
+}
+
+export type ModelModalities = {
+  input: Array<"text" | "image">
+  output: Array<"text" | "image">
+}
+
+// Image input and image output are independent: vision chat models read
+// images but answer in text, while image-generation models produce images.
+export function modelModalities(modelID: string): ModelModalities {
+  const imageOutput = isImageModel(modelID)
+  return {
+    input: imageOutput || supportsAttachments(modelID) ? ["text", "image"] : ["text"],
+    output: imageOutput ? ["image"] : ["text"],
+  }
 }
 
 export function resolveModelNpm(

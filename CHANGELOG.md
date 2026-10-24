@@ -20,6 +20,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - `index.ts` at the repository root so a local checkout can be used as the
   plugin path without a build step.
 
+### Fixed
+
+- Image attachments now reach discovered Claude, Gemini, and GPT models.
+  OpenCode only forwards image parts to models that declare image input, and
+  the plugin previously declared it only for `*-image-*` generation models, so
+  other models received a `Cannot read "<file>"` placeholder instead. V1 now
+  sets `modalities: { input: ["text", "image"], output: ["text"] }` and V2
+  sets the matching `capabilities.input`, both from one shared policy.
+  Text-only `gpt-oss-*` models are no longer marked as attachment-capable.
+
 ## [0.2.1] - 2026-09-09
 
 ### Fixed
