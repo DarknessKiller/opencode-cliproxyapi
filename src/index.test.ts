@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Config, PluginInput } from "@opencode-ai/plugin"
 import { CLIProxyAPIPlugin } from "./index.js"
+import { toV2Model } from "./plugin-v2.js"
 
 describe("CLIProxyAPIPlugin", () => {
   test("discovers models and merges the provider into OpenCode config", async () => {
@@ -342,6 +343,110 @@ describe("CLIProxyAPIPlugin", () => {
       ])
       // OpenCode would otherwise add its own default "medium" effort here.
       expect(variants?.["medium"]).toEqual({ disabled: true })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("declares image input for discovered vision models without user config", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async (input) => {
+      if (String(input) === "https://models.dev/api.json") {
+        return Response.json({ anthropic: { npm: "@ai-sdk/anthropic", models: {} } })
+      }
+      return Response.json({
+        data: [
+          { id: "claude-opus-example", owned_by: "anthropic" },
+          { id: "gemini-example-pro" },
+          { id: "gpt-example-codex" },
+          { id: "gpt-oss-120b" },
+          { id: "deepseek-v4" },
+          { id: "gemini-3.1-flash-image" },
+          { id: "claude-sonnet-custom" },
+        ],
+      })
+    }
+
+    try {
+      const plugin = await CLIProxyAPIPlugin(
+        { client: { app: { log: async () => ({}) } } } as PluginInput,
+        { baseURL: "http://cliproxy.test:8317" },
+      )
+      const config: Config = {
+        provider: {
+          cliproxyapi: {
+            models: {
+              // An explicit user override still wins over the heuristic.
+              "claude-sonnet-custom": { modalities: { input: ["text"], output: ["text"] } },
+            },
+          },
+        },
+      }
+
+      await plugin.config?.(config)
+
+      const models = config.provider?.cliproxyapi?.models
+      const vision = { input: ["text", "image"], output: ["text"] }
+      for (const id of ["claude-opus-example", "gemini-example-pro", "gpt-example-codex"]) {
+        expect(models?.[id]).toMatchObject({ attachment: true, tool_call: true, modalities: vision })
+      }
+      // Routing is unaffected by the capability metadata.
+      expect(models?.["claude-opus-example"]?.provider).toEqual({ npm: "@ai-sdk/anthropic" })
+
+      // Text-only models keep OpenCode's defaults.
+      for (const id of ["gpt-oss-120b", "deepseek-v4"]) {
+        expect(models?.[id]?.attachment).toBe(false)
+        expect(models?.[id]?.modalities).toBeUndefined()
+      }
+
+      // Image generation keeps image output and no tools.
+      expect(models?.["gemini-3.1-flash-image"]).toMatchObject({
+        tool_call: false,
+        modalities: { input: ["text", "image"], output: ["image"] },
+      })
+
+      expect(models?.["claude-sonnet-custom"]?.modalities).toEqual({
+        input: ["text"],
+        output: ["text"],
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("V1 modalities match V2 capabilities for discovered models", async () => {
+    const ids = [
+      "claude-opus-example",
+      "gemini-example-pro",
+      "gpt-example",
+      "gpt-oss-20b",
+      "deepseek-v4",
+      "gemini-3.1-flash-image",
+    ]
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async () => Response.json({ data: ids.map((id) => ({ id })) })
+
+    try {
+      const plugin = await CLIProxyAPIPlugin(
+        { client: { app: { log: async () => ({}) } } } as PluginInput,
+        { baseURL: "http://cliproxy.test:8317", modelMetadataURL: false },
+      )
+      const config: Config = {}
+      await plugin.config?.(config)
+
+      const discovery = {
+        catalog: ids.map((id) => ({ id })),
+        protocolCatalog: {},
+        effortCatalog: {},
+        errors: [],
+      }
+      for (const id of ids) {
+        const v1 = config.provider?.cliproxyapi?.models?.[id]
+        const v2 = toV2Model({ id }, { providerID: "cliproxyapi", discovery })
+        expect(v1?.modalities?.input ?? ["text"]).toEqual(v2.capabilities.input as never)
+        expect(v1?.modalities?.output ?? ["text"]).toEqual(v2.capabilities.output as never)
+        expect(v1?.tool_call).toBe(v2.capabilities.tools)
+      }
     } finally {
       globalThis.fetch = originalFetch
     }

@@ -25,6 +25,7 @@ import {
   displayName,
   isAnthropicRouted,
   isImageModel,
+  modelModalities,
   readOptions,
   supportedEffortLevels,
   type CatalogDiscovery,
@@ -74,6 +75,7 @@ export function toV2Model(
   input: { providerID: string; discovery: CatalogDiscovery },
 ): V2ModelInfo {
   const image = isImageModel(model.id)
+  const modalities = modelModalities(model.id)
   const levels = supportedEffortLevels(model, input.discovery)
   const anthropic = isAnthropicRouted(model, input.discovery.protocolCatalog)
 
@@ -85,8 +87,8 @@ export function toV2Model(
     ...(anthropic ? { package: V2_ANTHROPIC_PACKAGE } : {}),
     capabilities: {
       tools: !image,
-      input: image ? ["text", "image"] : ["text"],
-      output: image ? ["image"] : ["text"],
+      input: modalities.input,
+      output: modalities.output,
     },
     // V2 does not generate default variants, so the picker shows exactly the
     // levels CLIProxyAPI reported.
