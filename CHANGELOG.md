@@ -5,6 +5,25 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-13
+
+### Added
+
+- Discovered models now carry token limits parsed from the CLIProxyAPI
+  codex-client catalog, resolving the V1/V2 alignment gap. Context window
+  comes from `context_window`, falling back to `max_context_window` and
+  then 128,000; output comes from `max_tokens`, falling back to 32,000,
+  OpenCode V1's effective default (`0` breaks Anthropic-routed models and
+  V2 has no default of its own). Both plugin versions resolve limits
+  through the same shared code.
+- User config now wins per field over discovered models in both versions:
+  non-empty strings for `name`/`package`/`provider.npm`, booleans for the
+  capability flags, and `limit` merged key-by-key (raising and lowering
+  both win; `0` keeps the default policy). `variants` and other nested
+  objects keep whole-object override semantics, models configured in user
+  config alone are preserved, and invalid values no longer erase what
+  discovery found.
+
 ## [0.3.1] - 2026-11-13
 
 ### Fixed
@@ -90,8 +109,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Automatic model names and capability hints in OpenCode's model picker.
 - Local plugin and npm package installation flows.
 
-[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.3.1...HEAD
-[0.3.1]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.3.0...v0.3.1
+[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.3.1...v0.4.0
 [0.3.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.2...v0.2.0
