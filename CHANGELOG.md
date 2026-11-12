@@ -5,7 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project follows [Semantic Versioning](https://semver.org/).
 
-## [0.3.0] - Unreleased
+## [0.3.1] - Unreleased
+
+### Fixed
+
+- Image attachments now reach discovered Claude, Gemini, and GPT models.
+  OpenCode only forwards image parts to models that declare image input, and
+  the plugin previously declared it only for `*-image-*` generation models, so
+  other models received a `Cannot read "<file>"` placeholder instead. V1 now
+  sets `modalities: { input: ["text", "image"], output: ["text"] }` and V2
+  sets the matching `capabilities.input`, both from one shared policy.
+  Text-only `gpt-oss-*` models are no longer marked as attachment-capable.
+
+## [0.3.0] - 2026-10-05
 
 ### Added
 
@@ -19,16 +31,6 @@ and this project follows [Semantic Versioning](https://semver.org/).
   v2 variants list exactly the effort levels the server reported.
 - `index.ts` at the repository root so a local checkout can be used as the
   plugin path without a build step.
-
-### Fixed
-
-- Image attachments now reach discovered Claude, Gemini, and GPT models.
-  OpenCode only forwards image parts to models that declare image input, and
-  the plugin previously declared it only for `*-image-*` generation models, so
-  other models received a `Cannot read "<file>"` placeholder instead. V1 now
-  sets `modalities: { input: ["text", "image"], output: ["text"] }` and V2
-  sets the matching `capabilities.input`, both from one shared policy.
-  Text-only `gpt-oss-*` models are no longer marked as attachment-capable.
 
 ## [0.2.1] - 2026-09-09
 
@@ -88,7 +90,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Automatic model names and capability hints in OpenCode's model picker.
 - Local plugin and npm package installation flows.
 
-[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/DarknessKiller/opencode-cliproxyapi/compare/v0.1.1...v0.1.2
