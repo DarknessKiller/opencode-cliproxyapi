@@ -56,8 +56,8 @@ Files in scope: `src/index.ts` (`mergeModels`, `mergeDiscoveredModel`,
 Rules:
 
 - A user value wins only after passing its guard: `isProperString`
-  (`src/shared.ts:81-83`, non-empty after trim), `isProperBoolean` (`:85-87`),
-  `isProperContextLimit`/`isProperOutputLimit` (`:89-98`, integer `> 0`).
+  (`src/shared.ts:82-84`, non-empty after trim), `isProperBoolean` (`:86-88`),
+  `isProperLimit` (`:90-93`, integer `> 0`).
 - `limit` merges key-by-key (`src/index.ts:260`, `src/plugin-v2.ts:150`);
   user `0` means "use the default policy" and never overrides.
 - `provider` is whole-override with `npm` backfilled from the discovered
@@ -97,7 +97,7 @@ it.
 
 Files in scope: `src/catalog.ts` `discover*`, `src/shared.ts`
 (`discoverCatalog`, `discoverEffortLevels`), `src/index.ts:57-101`,
-`src/plugin-v2.ts:164-211`.
+`src/plugin-v2.ts:161-214`.
 
 Rules: every fetch uses `AbortSignal.timeout(input.timeoutMs)`
 (`src/catalog.ts:161`) and a bearer header when a key exists; a non-ok
