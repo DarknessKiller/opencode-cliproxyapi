@@ -11,12 +11,15 @@ export type ModelProtocolCatalog = Record<
   }
 >
 
+// Per-model metadata CLIProxyAPI reports: reasoning effort levels and the
+// context/output limits the model actually accepts.
 export type ReasoningEffortLevels = {
-  levels: string[]
+  levels?: string[]
   defaultLevel?: string
+  limit?: { context?: number; output?: number }
 }
 
-// Reasoning effort metadata CLIProxyAPI reports per model, indexed by model id.
+// Indexed by model id.
 export type ReasoningEffortCatalog = Record<string, ReasoningEffortLevels>
 
 // CLIProxyAPI serves its codex-client model catalog (which carries per-model
@@ -66,18 +69,30 @@ export function parseReasoningEffortCatalog(input: unknown): ReasoningEffortCata
   const catalog: ReasoningEffortCatalog = {}
   for (const item of input.models) {
     if (!isRecord(item) || typeof item.slug !== "string" || item.slug.trim() === "") continue
+
     const rawLevels = item.supported_reasoning_levels
-    if (!Array.isArray(rawLevels)) continue
+    const levels = Array.isArray(rawLevels)
+      ? rawLevels
+          .map((entry) =>
+            isRecord(entry) && typeof entry.effort === "string" ? entry.effort : undefined,
+          )
+          .filter((level): level is string => level !== undefined)
+      : undefined
 
-    const levels = rawLevels
-      .map((entry) => (isRecord(entry) && typeof entry.effort === "string" ? entry.effort : undefined))
-      .filter((level): level is string => level !== undefined)
-    if (levels.length === 0) continue
+    const limit: { context?: number; output?: number } = {}
+    const context = [item.context_window, item.max_context_window].find(isPositiveNumber)
+    const output = isPositiveNumber(item.max_tokens) ? item.max_tokens : undefined
+    if (context !== undefined) limit.context = context
+    if (output !== undefined) limit.output = output
 
-    const defaultLevel = typeof item.default_reasoning_level === "string" ? item.default_reasoning_level : undefined
+    const defaultLevel =
+      levels && typeof item.default_reasoning_level === "string"
+        ? item.default_reasoning_level
+        : undefined
     catalog[item.slug] = {
-      levels: [...new Set(levels)],
+      ...(levels ? { levels: [...new Set(levels)] } : {}),
       ...(defaultLevel ? { defaultLevel } : {}),
+      ...(Object.keys(limit).length > 0 ? { limit } : {}),
     }
   }
   return catalog
@@ -169,6 +184,10 @@ export async function discoverModelProtocols(input: {
   }
 
   return parseModelProtocolCatalog(await response.json())
+}
+
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

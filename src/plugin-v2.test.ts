@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import pluginEntry from "./index.js"
-import { setup, toV2Model, type V2ModelInfo } from "./plugin-v2.js"
+import { mergeV2Models, setup, toV2Model, type V2ModelInfo } from "./plugin-v2.js"
 import type { CatalogDiscovery } from "./shared.js"
 
 const discovery: CatalogDiscovery = {
@@ -13,7 +13,7 @@ const discovery: CatalogDiscovery = {
     anthropic: { npm: "@ai-sdk/anthropic", models: {} },
   },
   effortCatalog: {
-    "gpt-5.6-terra": { levels: ["low", "high", "none"] },
+    "gpt-5.6-terra": { levels: ["low", "high", "none"], limit: { context: 200_000, output: 64_000 } },
   },
   errors: [],
 }
@@ -164,5 +164,114 @@ describe("plugin-v2", () => {
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+  test("toV2Model takes limits from the catalog, else the defaults", () => {
+    const [terra, image] = discovery.catalog.map((model) =>
+      toV2Model(model, { providerID: "cliproxyapi", discovery }),
+    ) as V2ModelInfo[]
+
+    expect(terra.limit).toEqual({ context: 200_000, output: 64_000 })
+    expect(image.limit).toEqual({ context: 128_000, output: 32_000 })
+  })
+
+  test("mergeV2Models applies usable user overrides and appends config-only models", () => {
+    const [terra, image] = discovery.catalog.map((model) =>
+      toV2Model(model, { providerID: "cliproxyapi", discovery }),
+    ) as V2ModelInfo[]
+    const configOnly = { id: "config-only", name: "Config Only" } as unknown as V2ModelInfo
+    const userModels = new Map<string, unknown>([
+      [
+        "gpt-5.6-terra",
+        {
+          name: "",
+          package: "@custom/package",
+          enabled: false,
+          limit: { context: 250_000, output: 0 },
+          variants: [{ id: "custom" }],
+          settings: { effort: "high" },
+        },
+      ],
+      ["gemini-3.1-flash-image", { limit: { context: 999 } }],
+      ["config-only", configOnly],
+    ])
+
+    const merged = mergeV2Models([terra, image], userModels)
+
+    expect(merged.map((model) => model.id)).toEqual([
+      "gpt-5.6-terra",
+      "gemini-3.1-flash-image",
+      "config-only",
+    ])
+    // Empty name ignored; package/enabled/variants/settings win as a whole.
+    expect(merged[0]).toMatchObject({
+      name: "GPT 5.6 Terra",
+      package: "@custom/package",
+      enabled: false,
+      limit: { context: 250_000, output: 64_000 },
+      variants: [{ id: "custom" }],
+      settings: { effort: "high" },
+    })
+    // Context-only override keeps the discovered output limit.
+    expect(merged[1].limit).toEqual({ context: 999, output: 32_000 })
+    expect(merged[2]).toBe(configOnly)
+  })
+
+  test("setup merges the existing provider's user models", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async () => Response.json({ data: [{ id: "gpt-5.6-terra" }] })
+
+    try {
+      const calls: { modelsSet?: { id: string; models: V2ModelInfo[] } } = {}
+      const ctx = {
+        options: { baseURL: "http://cliproxy.test:8317" },
+        provider: {
+          transform: async (cb: (editor: unknown) => void) =>
+            cb({
+              get: () => ({
+                provider: { id: "cliproxyapi" },
+                models: new Map([
+                  ["gpt-5.6-terra", { name: "User Terra", limit: { context: 200_000 } }],
+                ]),
+              }),
+              add: () => {},
+              update: (_id: string, mutate: (provider: Record<string, unknown>) => void) => {
+                mutate({ id: "cliproxyapi" })
+              },
+              models: {
+                set: (id: string, models: V2ModelInfo[]) => {
+                  calls.modelsSet = { id, models }
+                },
+              },
+            }),
+        },
+      }
+
+      await setup(ctx as never)
+
+      expect(calls.modelsSet?.models).toHaveLength(1)
+      expect(calls.modelsSet?.models[0]).toMatchObject({
+        id: "gpt-5.6-terra",
+        name: "User Terra",
+        limit: { context: 200_000, output: 32_000 },
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("mergeV2Models skips non-object user entries", () => {
+    const discovered = discovery.catalog.map((model) =>
+      toV2Model(model, { providerID: "cliproxyapi", discovery }),
+    )
+    const merged = mergeV2Models(
+      discovered,
+      new Map<string, unknown>([
+        ["gpt-5.6-terra", null],
+        ["ghost-model", "x"],
+      ]),
+    )
+
+    expect(merged).toHaveLength(discovered.length)
+    expect(merged[0]).toEqual(discovered[0])
   })
 })

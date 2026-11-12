@@ -21,21 +21,23 @@ import {
   V2_ANTHROPIC_PACKAGE,
   V2_CHAT_PACKAGE,
   V2_RESPONSES_PACKAGE,
+  definedKeys,
   discoverCatalog,
   displayName,
   isAnthropicRouted,
   isImageModel,
+  isProperBoolean,
+  isProperString,
   modelModalities,
+  properLimitOverrides,
   readOptions,
+  resolveModelLimits,
   supportedEffortLevels,
   type CatalogDiscovery,
   type ConnectorOptions,
 } from "./shared.js"
 
 type Context = Plugin.Context
-
-const DEFAULT_CONTEXT_LIMIT = 128_000
-const DEFAULT_OUTPUT_LIMIT = 4_096
 
 export interface V2ModelVariant {
   id: string
@@ -100,7 +102,7 @@ export function toV2Model(
     cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }],
     status: "active",
     enabled: true,
-    limit: { context: DEFAULT_CONTEXT_LIMIT, output: DEFAULT_OUTPUT_LIMIT },
+    limit: resolveModelLimits(model, input.discovery.effortCatalog),
   }
 }
 
@@ -111,6 +113,48 @@ export function toV2Models(input: {
   return input.discovery.catalog.map((model) =>
     toV2Model(model, { providerID: input.providerID, discovery: input.discovery }),
   )
+}
+
+/**
+ * Overlays the user's configured models on the discovered list. Discovery
+ * provides the defaults; a user value wins only where it is a value V2 can
+ * use, and a model the user configured alone is preserved verbatim.
+ */
+export function mergeV2Models(
+  discovered: V2ModelInfo[],
+  userModels?: ReadonlyMap<string, unknown>,
+): V2ModelInfo[] {
+  const merged = discovered.map((base) => {
+    const userModel = userModels?.get(base.id)
+    return isRecord(userModel) ? mergeV2Model(base, userModel) : base
+  })
+
+  if (userModels) {
+    const discoveredIDs = new Set(discovered.map((model) => model.id))
+    for (const [id, userModel] of userModels) {
+      // A model the user configured outside discovery is preserved by design,
+      // so it survives even if the catalog later drops it.
+      if (!discoveredIDs.has(id) && isRecord(userModel)) merged.push(userModel as unknown as V2ModelInfo)
+    }
+  }
+
+  return merged
+}
+
+function mergeV2Model(base: V2ModelInfo, userModel: Record<string, unknown>): V2ModelInfo {
+  return {
+    ...base,
+    ...definedKeys(userModel),
+    name: isProperString(userModel.name) ? userModel.name : base.name,
+    package: isProperString(userModel.package) ? userModel.package : base.package,
+    enabled: isProperBoolean(userModel.enabled) ? userModel.enabled : base.enabled,
+    // Key-by-key: a user may raise or lower one limit and keep the other.
+    limit: { ...base.limit, ...properLimitOverrides(userModel.limit) },
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 /**
@@ -132,7 +176,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
     console.warn(`[cliproxyapi] ${error}`)
   }
 
-  const models = toV2Models({ providerID, discovery })
+  const discovered = toV2Models({ providerID, discovery })
   const providerPackage =
     options.protocol === "responses" ? V2_RESPONSES_PACKAGE : V2_CHAT_PACKAGE
 
@@ -141,6 +185,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
     if (apiKey) settings.apiKey = apiKey
 
     const existing = editor.get(providerID)
+    const models = mergeV2Models(discovered, existing?.models) as unknown as Model.Info[]
     if (existing) {
       editor.update(providerID, (provider) => {
         provider.name = provider.name || options.providerName || DEFAULT_PROVIDER_NAME
@@ -148,7 +193,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
         provider.package = providerPackage
         provider.settings = { ...provider.settings, ...settings }
       })
-      editor.models.set(providerID, models as unknown as Model.Info[])
+      editor.models.set(providerID, models)
       return
     }
 
@@ -159,7 +204,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
       package: providerPackage,
       settings,
     }
-    editor.add({ info, models: models as unknown as Model.Info[] })
+    editor.add({ info, models })
   })
 
   return async () => {}

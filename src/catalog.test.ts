@@ -8,6 +8,7 @@ import {
   parseModelProtocolCatalog,
   parseReasoningEffortCatalog,
 } from "./catalog.js"
+import { resolveModelLimits } from "./shared.js"
 
 describe("normalizeBaseURL", () => {
   test.each([
@@ -100,6 +101,7 @@ describe("parseReasoningEffortCatalog", () => {
     ).toEqual({
       "gpt-5.6-terra": { levels: ["none", "low", "high"], defaultLevel: "low" },
       "gemini-3.1-pro-low": { levels: ["low", "high"] },
+      "no-levels": { levels: [] },
     })
   })
 
@@ -107,6 +109,44 @@ describe("parseReasoningEffortCatalog", () => {
     expect(parseReasoningEffortCatalog({ data: [{ id: "gpt-5.6-terra" }] })).toEqual({})
     expect(parseReasoningEffortCatalog({ models: [] })).toEqual({})
     expect(parseReasoningEffortCatalog([])).toEqual({})
+  })
+
+  test("parses context and output limits", () => {
+    expect(
+      parseReasoningEffortCatalog({
+        models: [
+          {
+            slug: "both-windows",
+            context_window: 200_000,
+            max_context_window: 400_000,
+            max_tokens: 64_000,
+          },
+          { slug: "max-context-only", max_context_window: 1_000_000, max_tokens: 8_000 },
+          { slug: "fallback-context", context_window: 0, max_context_window: 100_000 },
+        ],
+      }),
+    ).toEqual({
+      "both-windows": { limit: { context: 200_000, output: 64_000 } },
+      "max-context-only": { limit: { context: 1_000_000, output: 8_000 } },
+      "fallback-context": { limit: { context: 100_000 } },
+    })
+  })
+
+  test("skips invalid limit values", () => {
+    expect(
+      parseReasoningEffortCatalog({
+        models: [
+          {
+            slug: "invalid-limits",
+            context_window: -1,
+            max_context_window: Number.POSITIVE_INFINITY,
+            max_tokens: Number.NaN,
+            max_output_tokens: 32_000,
+          },
+          { slug: "zero-and-string", context_window: 0, max_tokens: "8000" },
+        ],
+      }),
+    ).toEqual({ "invalid-limits": {}, "zero-and-string": {} })
   })
 })
 
@@ -215,5 +255,32 @@ describe("discoverModelProtocols", () => {
         },
       },
     })
+  })
+})
+
+describe("resolveModelLimits", () => {
+  test("falls back to the default limits", () => {
+    expect(resolveModelLimits({ id: "gpt-5.6-terra" }, {})).toEqual({
+      context: 128_000,
+      output: 32_000,
+    })
+    expect(
+      resolveModelLimits({ id: "gpt-5.6-terra" }, { "gpt-5.6-terra": { levels: ["low"] } }),
+    ).toEqual({ context: 128_000, output: 32_000 })
+  })
+
+  test("prefers the catalog limits", () => {
+    expect(
+      resolveModelLimits(
+        { id: "gpt-5.6-terra" },
+        { "gpt-5.6-terra": { limit: { context: 400_000, output: 128_000 } } },
+      ),
+    ).toEqual({ context: 400_000, output: 128_000 })
+    expect(
+      resolveModelLimits(
+        { id: "gpt-5.6-terra" },
+        { "gpt-5.6-terra": { limit: { output: 16_000 } } },
+      ),
+    ).toEqual({ context: 128_000, output: 16_000 })
   })
 })

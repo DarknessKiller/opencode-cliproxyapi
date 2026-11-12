@@ -9,12 +9,17 @@ import {
   V1_ANTHROPIC_PACKAGE,
   V1_CHAT_PACKAGE,
   V1_RESPONSES_PACKAGE,
+  definedKeys,
   discoverCatalog,
   displayName,
+  isProperBoolean,
+  isProperString,
   isImageModel,
   isReasoningModel,
   modelModalities,
+  properLimitOverrides,
   readOptions,
+  resolveModelLimits,
   resolveModelNpm,
   stringOption,
   supportedEffortLevels,
@@ -142,6 +147,7 @@ function addProvider(
         tool_call: !isImageModel(model.id),
         reasoning: isReasoningModel(model.id, input.effortCatalog[model.id]),
         attachment: supportsAttachments(model.id),
+        limit: resolveModelLimits(model, input.effortCatalog),
         ...(model.ownedBy &&
         resolveModelNpm(input.protocolCatalog, model.ownedBy, model.id) ===
           V1_ANTHROPIC_PACKAGE
@@ -201,19 +207,19 @@ function reasoningEffortConfig(
   if (!levels) return {}
 
   const defaultLevel =
-    efforts.defaultLevel !== undefined && efforts.levels.includes(efforts.defaultLevel)
+    efforts.defaultLevel !== undefined && efforts.levels?.includes(efforts.defaultLevel)
       ? efforts.defaultLevel
       : undefined
 
   return {
     ...(defaultLevel ? { options: { reasoningEffort: defaultLevel } } : {}),
     variants: {
-      ...Object.fromEntries(efforts.levels.map((level) => [level, { reasoningEffort: level }])),
+      ...Object.fromEntries((efforts.levels ?? []).map((level) => [level, { reasoningEffort: level }])),
       // OpenCode merges its own per-model default variants (low/medium/high plus
       // family extras such as max for deepseek-v4) on top of config variants.
       // Disable every effort it might add that CLIProxyAPI did not report, so
       // the picker shows exactly the server-supported set.
-      ...disabledVariants(efforts.levels),
+      ...disabledVariants(efforts.levels ?? []),
     },
   }
 }
@@ -233,21 +239,53 @@ function disabledVariants(supported: string[]) {
 
 
 function mergeModels(
-  discovered: Record<string, ModelConfig>,
+  discovered: Record<string, DiscoveredModelConfig>,
   existing: ProviderConfig["models"],
 ): Record<string, ModelConfig> {
-  const merged = { ...discovered }
+  const merged: Record<string, ModelConfig> = { ...discovered }
 
-  for (const [modelID, model] of Object.entries(existing ?? {})) {
-    const discoveredModel = merged[modelID]
-    const providerNpm = model.provider?.npm ?? discoveredModel?.provider?.npm
-    merged[modelID] = {
-      ...discoveredModel,
-      ...model,
-      ...(providerNpm ? { provider: { npm: providerNpm } } : {}),
+  for (const [modelID, userModel] of Object.entries(existing ?? {})) {
+    const base = merged[modelID]
+    if (!base) {
+      // Config-only models are preserved verbatim; a non-object entry cannot be one.
+      if (isRecord(userModel)) merged[modelID] = { ...userModel } as ModelConfig
+      continue
     }
+    // A non-object entry cannot override anything, so the discovered model stays.
+    if (isRecord(userModel)) merged[modelID] = mergeDiscoveredModel(base, userModel as ModelConfig)
   }
 
   return merged
 }
 
+// The user's config wins per field, but only with a value OpenCode can use: an
+// empty name or a non-boolean flag would otherwise erase what discovery found.
+function mergeDiscoveredModel(base: ModelConfig, userModel: ModelConfig): ModelConfig {
+  // Discovery resolves both limits, so the override spread never leaves a gap.
+  const limits = { ...base.limit, ...properLimitOverrides(userModel.limit) }
+  const merged: ModelConfig = {
+    ...base,
+    ...definedKeys(userModel),
+    name: isProperString(userModel.name) ? userModel.name : base.name,
+    tool_call: isProperBoolean(userModel.tool_call) ? userModel.tool_call : base.tool_call,
+    reasoning: isProperBoolean(userModel.reasoning) ? userModel.reasoning : base.reasoning,
+    attachment: isProperBoolean(userModel.attachment) ? userModel.attachment : base.attachment,
+    // Key-by-key: a user may raise or lower one limit and keep the other.
+    limit: limits as NonNullable<ModelConfig["limit"]>,
+  }
+
+  const userProvider = userModel.provider
+  if (typeof userProvider === "object" && userProvider !== null) {
+    const { npm, ...rest } = userProvider
+    const providerNpm = isProperString(npm) ? npm : base.provider?.npm
+    const provider = (providerNpm ? { npm: providerNpm, ...rest } : rest) as ModelConfig["provider"]
+    // An empty provider object says nothing, so it must not erase the discovered one.
+    if (Object.keys(provider ?? {}).length > 0) merged.provider = provider
+  }
+
+  return merged
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}

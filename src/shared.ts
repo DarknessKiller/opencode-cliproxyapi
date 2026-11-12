@@ -6,6 +6,7 @@ import {
   type CatalogModel,
   type ModelProtocolCatalog,
   type ReasoningEffortCatalog,
+  type ReasoningEffortLevels,
 } from "./catalog.js"
 
 export const DEFAULT_BASE_URL = "http://localhost:8317/v1"
@@ -13,6 +14,10 @@ export const DEFAULT_PROVIDER_ID = "cliproxyapi"
 export const DEFAULT_PROVIDER_NAME = "CLIProxyAPI"
 export const DEFAULT_DISCOVERY_TIMEOUT_MS = 10_000
 export const DEFAULT_MODEL_METADATA_URL = "https://models.dev/api.json"
+export const DEFAULT_CONTEXT_LIMIT = 128_000
+// OpenCode V1's effective output default. 0 breaks Anthropic-routed models, so V2
+// must state it explicitly; one resolver serves both versions.
+export const DEFAULT_OUTPUT_LIMIT = 32_000
 
 // V1 driver packages (`@ai-sdk/*`) map to the OpenCode V2 provider packages.
 export const V1_CHAT_PACKAGE = "@ai-sdk/openai-compatible"
@@ -62,6 +67,53 @@ export function stringOption(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value : undefined
 }
 
+export function resolveModelLimits(
+  model: CatalogModel,
+  effortCatalog: ReasoningEffortCatalog,
+): { context: number; output: number } {
+  const limit = effortCatalog[model.id]?.limit
+  return {
+    context: limit?.context ?? DEFAULT_CONTEXT_LIMIT,
+    output: limit?.output ?? DEFAULT_OUTPUT_LIMIT,
+  }
+}
+
+export function isProperString(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== ""
+}
+
+export function isProperBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean"
+}
+
+export function isProperContextLimit(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) > 0
+}
+
+// 0 means "use the default policy", so it is not an override.
+export function isProperOutputLimit(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) > 0
+}
+
+export function properLimitOverrides(userLimit: unknown): { context?: number; output?: number } {
+  const input = (typeof userLimit === "object" && userLimit !== null ? userLimit : {}) as {
+    context?: unknown
+    output?: unknown
+  }
+  return {
+    ...(isProperContextLimit(input.context) ? { context: input.context } : {}),
+    ...(isProperOutputLimit(input.output) ? { output: input.output } : {}),
+  }
+}
+
+// JSON config cannot express `undefined`, but a partially built config object
+// can; drop those keys so they never clobber a discovered value.
+export function definedKeys<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as Partial<T>
+}
+
 export function displayName(modelID: string) {
   return modelID
     .split("-")
@@ -83,9 +135,9 @@ export function isImageModel(modelID: string) {
 // A reported level list always wins over the id heuristic.
 export function isReasoningModel(
   modelID: string,
-  efforts?: { levels: string[]; defaultLevel?: string },
+  efforts?: ReasoningEffortLevels,
 ) {
-  if (efforts?.levels.length) return efforts.levels.some((level) => level !== "none")
+  if (efforts?.levels?.length) return efforts.levels.some((level) => level !== "none")
   return /thinking|reasoning|codex|gpt-(?:5|oss)/i.test(modelID)
 }
 
@@ -144,7 +196,7 @@ export function supportedEffortLevels(
   if (!efforts) return undefined
   if (isAnthropicRouted(model, input.protocolCatalog)) return undefined
 
-  const levels = efforts.levels.filter((level) => level !== "none")
+  const levels = efforts.levels?.filter((level) => level !== "none") ?? []
   return levels.length > 0 ? levels : undefined
 }
 

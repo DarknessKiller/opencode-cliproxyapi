@@ -484,4 +484,207 @@ describe("CLIProxyAPIPlugin", () => {
       globalThis.fetch = originalFetch
     }
   })
+  test("emits catalog limits on discovered models", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      if (url.startsWith("http://cliproxy.test:8317/v1/models?")) {
+        return Response.json({
+          models: [{ slug: "gpt-5.6-terra", context_window: 200_000, max_tokens: 64_000 }],
+        })
+      }
+      return Response.json({ data: [{ id: "gpt-5.6-terra" }, { id: "plain-model" }] })
+    }
+
+    try {
+      const plugin = await CLIProxyAPIPlugin(
+        { client: { app: { log: async () => ({}) } } } as PluginInput,
+        { baseURL: "http://cliproxy.test:8317", modelMetadataURL: false },
+      )
+      const config: Config = {}
+
+      await plugin.config?.(config)
+
+      expect(config.provider?.cliproxyapi?.models?.["gpt-5.6-terra"]?.limit).toEqual({
+        context: 200_000,
+        output: 64_000,
+      })
+      expect(config.provider?.cliproxyapi?.models?.["plain-model"]?.limit).toEqual({
+        context: 128_000,
+        output: 32_000,
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("merges user model overrides field by field", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      if (url.startsWith("http://cliproxy.test:8317/v1/models?")) {
+        return Response.json({
+          models: [
+            {
+              slug: "gpt-5.6-terra",
+              context_window: 200_000,
+              max_tokens: 64_000,
+              supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+            },
+          ],
+        })
+      }
+      return Response.json({
+        data: [{ id: "gpt-5.6-terra" }, { id: "plain-model" }, { id: "second-model" }],
+      })
+    }
+
+    try {
+      const plugin = await CLIProxyAPIPlugin(
+        { client: { app: { log: async () => ({}) } } } as PluginInput,
+        { baseURL: "http://cliproxy.test:8317", modelMetadataURL: false },
+      )
+      const config = {
+        provider: {
+          cliproxyapi: {
+            models: {
+              "gpt-5.6-terra": {
+                name: "",
+                tool_call: false,
+                limit: { context: 300_000, output: 0 },
+                variants: { low: { reasoningEffort: "high", disabled: false } },
+                provider: { npm: "@custom/package" },
+              },
+              "plain-model": { name: null, limit: { output: 8_192 } },
+              "second-model": { limit: { context: 1_000, output: 0 } },
+              "config-only-model": { name: "Config Only", tool_call: true },
+            },
+          },
+        },
+      } as Config
+
+      await plugin.config?.(config)
+
+      const models = config.provider?.cliproxyapi?.models
+      // Empty name ignored, tool_call flip wins, context raised, output 0 ignored.
+      expect(models?.["gpt-5.6-terra"]).toMatchObject({
+        name: "GPT 5.6 Terra",
+        tool_call: false,
+        limit: { context: 300_000, output: 64_000 },
+        provider: { npm: "@custom/package" },
+      })
+      // Variants are replaced whole: the discovered low/high set is gone.
+      expect(models?.["gpt-5.6-terra"]?.variants).toEqual({
+        low: { reasoningEffort: "high", disabled: false },
+      })
+      // Null name is not usable; only the output limit is overridden.
+      expect(models?.["plain-model"]?.name).toBe("Plain Model")
+      expect(models?.["plain-model"]?.limit).toEqual({ context: 128_000, output: 8_192 })
+      // A lowered context wins; output 0 never does.
+      expect(models?.["second-model"]?.limit).toEqual({ context: 1_000, output: 32_000 })
+      expect(models?.["config-only-model"]).toEqual({ name: "Config Only", tool_call: true })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("ignores user values a discovered model cannot use", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async () =>
+      Response.json({
+        data: [
+          { id: "gpt-5.6-terra" },
+          { id: "plain-model" },
+          { id: "second-model" },
+          { id: "third-model" },
+          { id: "null-model" },
+        ],
+      })
+
+    try {
+      const plugin = await CLIProxyAPIPlugin(
+        { client: { app: { log: async () => ({}) } } } as PluginInput,
+        { baseURL: "http://cliproxy.test:8317", modelMetadataURL: false },
+      )
+      const config = {
+        provider: {
+          cliproxyapi: {
+            models: {
+              // Built programmatically: JSON cannot express an explicit undefined.
+              "gpt-5.6-terra": { name: undefined, tool_call: undefined },
+              "plain-model": { limit: "8192" },
+              "second-model": { limit: ["x"] },
+              "third-model": { limit: null },
+              "null-model": null,
+              "config-only-null": null,
+            },
+          },
+        },
+      } as unknown as Config
+
+      await plugin.config?.(config)
+
+      const models = config.provider?.cliproxyapi?.models
+      expect(models?.["gpt-5.6-terra"]?.name).toBe("GPT 5.6 Terra")
+      expect(models?.["gpt-5.6-terra"]?.tool_call).toBe(true)
+      for (const modelID of ["plain-model", "second-model", "third-model"]) {
+        expect(models?.[modelID]?.limit).toEqual({ context: 128_000, output: 32_000 })
+      }
+      // A non-object entry for a discovered id cannot override anything.
+      expect(models?.["null-model"]?.name).toBe("Null Model")
+      expect(models?.["null-model"]?.limit).toEqual({ context: 128_000, output: 32_000 })
+      // A non-object entry with no discovered model is skipped entirely.
+      expect(models?.["config-only-null"]).toBeUndefined()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("keeps the discovered provider package when the user only adds settings", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      if (url === "https://models.dev/api.json") {
+        return Response.json({ anthropic: { npm: "@ai-sdk/anthropic", models: {} } })
+      }
+      if (url.startsWith("http://cliproxy.test:8317/v1/models?")) {
+        return Response.json({ models: [] })
+      }
+      return Response.json({
+        data: [
+          { id: "claude-sonnet-4-6", owned_by: "anthropic" },
+          { id: "claude-opus-4-6", owned_by: "anthropic" },
+        ],
+      })
+    }
+
+    try {
+      const plugin = await CLIProxyAPIPlugin(
+        { client: { app: { log: async () => ({}) } } } as PluginInput,
+        { baseURL: "http://cliproxy.test:8317" },
+      )
+      const config = {
+        provider: {
+          cliproxyapi: {
+            models: {
+              "claude-sonnet-4-6": { provider: { headers: { "X-Test": "1" } } },
+              "claude-opus-4-6": { provider: {} },
+            },
+          },
+        },
+      } as Config
+
+      await plugin.config?.(config)
+
+      const models = config.provider?.cliproxyapi?.models
+      expect(models?.["claude-sonnet-4-6"]?.provider).toEqual({
+        npm: "@ai-sdk/anthropic",
+        headers: { "X-Test": "1" },
+      })
+      // An empty provider object says nothing and must not erase the discovered one.
+      expect(models?.["claude-opus-4-6"]?.provider).toEqual({ npm: "@ai-sdk/anthropic" })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })
