@@ -13,6 +13,7 @@ import {
   displayName,
   isImageModel,
   isReasoningModel,
+  modelModalities,
   readOptions,
   resolveModelNpm,
   stringOption,
@@ -150,14 +151,9 @@ function addProvider(
               },
             }
           : {}),
-        ...(isImageModel(model.id)
-          ? {
-              modalities: {
-                input: ["text", "image"],
-                output: ["image"],
-              },
-            }
-          : {}),
+        // OpenCode keeps image parts only when `modalities.input` includes
+        // "image"; `attachment` alone does not enable image input.
+        ...imageModalities(model.id),
         ...reasoningEffortConfig(model, input),
       },
     ]),
@@ -180,6 +176,14 @@ function addProvider(
       models: mergeModels(discovered, existing?.models),
     },
   }
+}
+
+// Text-only models omit `modalities` so OpenCode keeps its own defaults (or
+// models.dev metadata when the provider id matches a known provider).
+function imageModalities(modelID: string): DiscoveredModelConfig {
+  const modalities = modelModalities(modelID)
+  if (!modalities.input.includes("image") && !modalities.output.includes("image")) return {}
+  return { modalities }
 }
 
 // Maps a model to the effort levels CLIProxyAPI itself reports for it. Levels

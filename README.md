@@ -240,6 +240,28 @@ Then restart OpenCode and run:
 opencode models cliproxyapi
 ```
 
+### The model says it cannot read an attached image
+
+CLIProxyAPI's `/v1/models` only reports model ids, so image input is inferred
+from the model family: discovered models whose id starts with `claude`,
+`gemini`, or `gpt` (except text-only `gpt-oss-*`) accept images, and
+`*-image-*` models are treated as image generators. New releases in those
+families are covered automatically. On OpenCode v1, declare the modalities of
+a vision model outside these families under the provider's `models` in
+`opencode.json`; user entries override the discovered metadata:
+
+```jsonc
+{
+  "provider": {
+    "cliproxyapi": {
+      "models": {
+        "your-vision-model": { "attachment": true, "modalities": { "input": ["text", "image"], "output": ["text"] } }
+      }
+    }
+  }
+}
+```
+
 ### Environment configuration works in one terminal but not another
 
 Move the connection to the recommended global OpenCode config, or add the
