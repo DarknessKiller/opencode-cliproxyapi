@@ -11,7 +11,7 @@
  * runtime dependency on the V2 SDK.
  */
 import type { Model, Plugin, Provider } from "@opencode/plugin"
-import { normalizeBaseURL } from "./catalog.js"
+import { isRecord, normalizeBaseURL } from "./catalog.js"
 import {
   DEFAULT_BASE_URL,
   DEFAULT_DISCOVERY_TIMEOUT_MS,
@@ -153,10 +153,6 @@ function mergeV2Model(base: V2ModelInfo, userModel: Record<string, unknown>): V2
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
 /**
  * V2 setup. Registers the provider from the discovered catalog and returns a
  * no-op cleanup (V2 keeps no timers or subscriptions for this plugin).
@@ -164,14 +160,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export async function setup(ctx: Context): Promise<() => Promise<void>> {
   const options: ConnectorOptions = readOptions(ctx.options)
   const providerID = options.providerID ?? DEFAULT_PROVIDER_ID
-  const baseURL = normalizeBaseURL(
-    options.baseURL ?? process.env.CLIPROXY_BASE_URL ?? DEFAULT_BASE_URL,
-  )
   const apiKey = options.apiKey ?? process.env.CLIPROXY_API_KEY
   const timeoutMs = options.discoveryTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS
   const modelMetadataURL = options.modelMetadataURL ?? DEFAULT_MODEL_METADATA_URL
-
-  const discovery = await discoverCatalog({ baseURL, apiKey, modelMetadataURL, timeoutMs })
+  let baseURL: string
+  let discovery: CatalogDiscovery
+  try {
+    baseURL = normalizeBaseURL(
+      options.baseURL ?? process.env.CLIPROXY_BASE_URL ?? DEFAULT_BASE_URL,
+    )
+    discovery = await discoverCatalog({ baseURL, apiKey, modelMetadataURL, timeoutMs })
+  } catch (error) {
+    console.warn(`[cliproxyapi] ${error instanceof Error ? error.message : String(error)}`)
+    throw error
+  }
   for (const error of discovery.errors) {
     console.warn(`[cliproxyapi] ${error}`)
   }
@@ -190,7 +192,7 @@ export async function setup(ctx: Context): Promise<() => Promise<void>> {
       editor.update(providerID, (provider) => {
         provider.name = provider.name || options.providerName || DEFAULT_PROVIDER_NAME
         provider.activation = "enabled"
-        provider.package = providerPackage
+        provider.package = provider.package || providerPackage
         provider.settings = { ...provider.settings, ...settings }
       })
       editor.models.set(providerID, models)

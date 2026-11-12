@@ -1,5 +1,5 @@
 import type { Config, Plugin, PluginModule } from "@opencode-ai/plugin"
-import { normalizeBaseURL, type CatalogModel, type ModelProtocolCatalog, type ReasoningEffortCatalog } from "./catalog.js"
+import { isRecord, normalizeBaseURL, type CatalogModel, type ModelProtocolCatalog, type ReasoningEffortCatalog } from "./catalog.js"
 import {
   DEFAULT_BASE_URL,
   DEFAULT_DISCOVERY_TIMEOUT_MS,
@@ -45,16 +45,16 @@ export const CLIProxyAPIPlugin: Plugin = async ({ client }, rawOptions) => {
     config: async (config) => {
       const providerID = options.providerID ?? DEFAULT_PROVIDER_ID
       const existing = config.provider?.[providerID]
-      const baseURL = normalizeBaseURL(
-        options.baseURL ??
-          process.env.CLIPROXY_BASE_URL ??
-          stringOption(existing?.options?.baseURL) ??
-          DEFAULT_BASE_URL,
-      )
       const apiKey =
         options.apiKey ?? process.env.CLIPROXY_API_KEY ?? stringOption(existing?.options?.apiKey)
 
       try {
+        const baseURL = normalizeBaseURL(
+          options.baseURL ??
+            process.env.CLIPROXY_BASE_URL ??
+            stringOption(existing?.options?.baseURL) ??
+            DEFAULT_BASE_URL,
+        )
         const timeoutMs = options.discoveryTimeoutMs ?? DEFAULT_DISCOVERY_TIMEOUT_MS
         const discovery = await discoverCatalog({
           baseURL,
@@ -286,6 +286,3 @@ function mergeDiscoveredModel(base: ModelConfig, userModel: ModelConfig): ModelC
   return merged
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}

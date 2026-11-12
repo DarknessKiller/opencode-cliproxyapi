@@ -138,7 +138,7 @@ describe("plugin-v2", () => {
                 calls.added = arg
               },
               update: (id: string, mutate: (provider: Record<string, unknown>) => void) => {
-                const provider: Record<string, unknown> = { id, name: "", settings: { timeout: 1 } }
+                const provider: Record<string, unknown> = { id, name: "", package: "@custom/pkg", settings: { timeout: 1 } }
                 mutate(provider)
                 calls.updated = provider
               },
@@ -157,7 +157,7 @@ describe("plugin-v2", () => {
       expect(calls.updated).toMatchObject({
         id: "cliproxyapi",
         activation: "enabled",
-        package: "@opencode/ai/providers/openai",
+        package: "@custom/pkg",
         settings: { timeout: 1, baseURL: "http://cliproxy.test:8317/v1" },
       })
       expect(calls.modelsSet?.models.map((model) => model.id)).toEqual(["gpt-5.6-terra"])
@@ -273,5 +273,28 @@ describe("plugin-v2", () => {
 
     expect(merged).toHaveLength(discovered.length)
     expect(merged[0]).toEqual(discovered[0])
+  })
+
+  test("setup warns and rethrows when discovery fails", async () => {
+    const originalFetch = globalThis.fetch
+    const originalWarn = console.warn
+    const warnings: string[] = []
+    globalThis.fetch = async () => {
+      throw new Error("connection refused")
+    }
+    console.warn = (message: unknown) => warnings.push(String(message))
+
+    try {
+      const ctx = {
+        options: { baseURL: "http://cliproxy.test:8317" },
+        provider: { transform: async () => ({}) },
+      }
+
+      await expect(setup(ctx as never)).rejects.toThrow("connection refused")
+      expect(warnings.some((warning) => warning.includes("connection refused"))).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+      console.warn = originalWarn
+    }
   })
 })

@@ -3,6 +3,7 @@ import {
   discoverModelProtocols,
   discoverModels,
   discoverReasoningEfforts,
+  isRecord,
   type CatalogModel,
   type ModelProtocolCatalog,
   type ReasoningEffortCatalog,
@@ -86,23 +87,19 @@ export function isProperBoolean(value: unknown): value is boolean {
   return typeof value === "boolean"
 }
 
-export function isProperContextLimit(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) > 0
-}
-
 // 0 means "use the default policy", so it is not an override.
-export function isProperOutputLimit(value: unknown): value is number {
+export function isProperLimit(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) > 0
 }
 
 export function properLimitOverrides(userLimit: unknown): { context?: number; output?: number } {
-  const input = (typeof userLimit === "object" && userLimit !== null ? userLimit : {}) as {
+  const input = (isRecord(userLimit) ? userLimit : {}) as {
     context?: unknown
     output?: unknown
   }
   return {
-    ...(isProperContextLimit(input.context) ? { context: input.context } : {}),
-    ...(isProperOutputLimit(input.output) ? { output: input.output } : {}),
+    ...(isProperLimit(input.context) ? { context: input.context } : {}),
+    ...(isProperLimit(input.output) ? { output: input.output } : {}),
   }
 }
 

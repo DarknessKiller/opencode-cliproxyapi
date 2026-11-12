@@ -687,4 +687,24 @@ describe("CLIProxyAPIPlugin", () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  test("logs and rethrows an invalid baseURL", async () => {
+    const logs: unknown[] = []
+    const plugin = await CLIProxyAPIPlugin(
+      {
+        client: {
+          app: {
+            log: async (input: unknown) => {
+              logs.push(input)
+              return {}
+            },
+          },
+        },
+      } as PluginInput,
+      { baseURL: "not a url" },
+    )
+
+    await expect(plugin.config?.({})).rejects.toThrow()
+    expect(logs[0]).toMatchObject({ body: { level: "error" } })
+  })
 })
